@@ -1,0 +1,9 @@
+# General
+target/
+.classpath
+.project
+.settings/
+.metadata/
+*.log
+.h2/
+gwt-unitCache/
