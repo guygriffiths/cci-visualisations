@@ -7,3 +7,5 @@ target/
 *.log
 .h2/
 gwt-unitCache/
+*.avi
+*.mp4
