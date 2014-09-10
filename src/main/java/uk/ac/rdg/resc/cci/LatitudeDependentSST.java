@@ -31,6 +31,7 @@ package uk.ac.rdg.resc.cci;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -63,7 +64,9 @@ import uk.ac.rdg.resc.edal.graphics.style.MappedSegmentColorScheme2D;
 import uk.ac.rdg.resc.edal.graphics.style.Raster2DLayer;
 import uk.ac.rdg.resc.edal.graphics.style.RasterLayer;
 import uk.ac.rdg.resc.edal.graphics.style.SegmentColourScheme;
+import uk.ac.rdg.resc.edal.graphics.style.Drawable.NameAndRange;
 import uk.ac.rdg.resc.edal.graphics.style.util.FeatureCatalogue;
+import uk.ac.rdg.resc.edal.graphics.style.util.LegendDataGenerator;
 import uk.ac.rdg.resc.edal.grid.RegularAxis;
 import uk.ac.rdg.resc.edal.grid.RegularGrid;
 import uk.ac.rdg.resc.edal.grid.RegularGridImpl;
@@ -71,6 +74,7 @@ import uk.ac.rdg.resc.edal.grid.TimeAxis;
 import uk.ac.rdg.resc.edal.metadata.GridVariableMetadata;
 import uk.ac.rdg.resc.edal.util.Array2D;
 import uk.ac.rdg.resc.edal.util.CollectionUtils;
+import uk.ac.rdg.resc.edal.util.Extents;
 import uk.ac.rdg.resc.edal.util.PlottingDomainParams;
 
 public class LatitudeDependentSST implements FeatureCatalogue {
@@ -79,8 +83,8 @@ public class LatitudeDependentSST implements FeatureCatalogue {
     private static final String LATITUDE_VAR = "latitude";
     private static final int WIDTH = 4320;
     private static final int HEIGHT = 2160;
-//    private static final int WIDTH = 1500;
-//    private static final int HEIGHT = 750;
+//    private static final int WIDTH = 1000;
+//    private static final int HEIGHT = 800;
 
     private TimeAxis timeAxis;
     private RegularGrid imageGrid;
@@ -228,8 +232,38 @@ public class LatitudeDependentSST implements FeatureCatalogue {
         }
     }
 
+    public static BufferedImage drawLegend(Raster2DLayer layer) throws EdalException {
+        int width = (int) (HEIGHT * 0.4);
+        int height = HEIGHT;
+        float extra = 0.1f;
+        LegendDataGenerator dataGenerator = new LegendDataGenerator(width,
+                height, null, extra, 0f);
+        NameAndRange sstNameAndRange = null;
+        for (NameAndRange testNameAndRange : layer.getFieldsWithScales()) {
+            if (testNameAndRange.getFieldLabel().equals(SST_VAR)) {
+                sstNameAndRange = testNameAndRange;
+                break;
+            }
+        }
+    
+        BufferedImage legend = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        
+        Graphics2D graphics = legend.createGraphics();
+        graphics.setColor(Color.black);
+        graphics.fillRect(0, 0, width, height);
+        BufferedImage colorbar2d = layer.drawImage(dataGenerator.getPlottingDomainParams(), dataGenerator.getFeatureCatalogue(
+                sstNameAndRange, new NameAndRange(LATITUDE_VAR, Extents.newExtent(-90f, 90f))));
+        BufferedImage legendLabels = MapImage.getLegendLabels(sstNameAndRange, extra, width, Color.white, true, HEIGHT / 60);
+        AffineTransform at = new AffineTransform();
+        at.translate(width, height - legendLabels.getWidth());
+        at.rotate(Math.PI / 2);
+        graphics.drawImage(colorbar2d, 0, 0, null);
+        graphics.drawImage(legendLabels,at, null);
+        return legend;
+    }
+
     public static void main(String[] args) throws IOException, EdalException {
-        String outputPath = "/home/guy/sst-out";
+        String outputPath = "/home/guy/sst-out-next";
 
         BufferedImage background = ImageIO.read(LatitudeDependentSST.class
                 .getResource("/bluemarble_bg.png"));
@@ -245,13 +279,13 @@ public class LatitudeDependentSST implements FeatureCatalogue {
         }
 
         MapImage compositeImage = new MapImage();
-        compositeImage.getLayers().add(latitudeDependentSST.calculateRaster2DLayer(useInAverage));
+        Raster2DLayer raster2dLayer = latitudeDependentSST.calculateRaster2DLayer(useInAverage);
+        compositeImage.getLayers().add(raster2dLayer);
+        compositeImage.getLayers().add(latitudeDependentSST.calculateIceLayer());
 
-        BufferedImage legend = compositeImage.getLegend((int) (HEIGHT * 0.4), (int) (HEIGHT * 0.8), Color.white, Color.black, true,
-                false, 0.025f, 0.03f);
+        BufferedImage legend = drawLegend(raster2dLayer);
         ImageIO.write(legend, "png", new File("/home/guy/legend.png"));
 
-        compositeImage.getLayers().add(latitudeDependentSST.calculateIceLayer());
 
         DateTimeFormatter dateFormatter = (new DateTimeFormatterBuilder()).appendDayOfMonth(2)
                 .appendLiteral("-").appendMonthOfYear(2).appendLiteral("-")
@@ -261,7 +295,7 @@ public class LatitudeDependentSST implements FeatureCatalogue {
         DecimalFormat frameNoFormat = new DecimalFormat("0000");
         for (DateTime time : latitudeDependentSST.timeAxis.getCoordinateValues()) {
             System.out.println("Generating frame for time " + time);
-            BufferedImage frame = new BufferedImage(WIDTH + legend.getWidth() + WIDTH / 20, HEIGHT,
+            BufferedImage frame = new BufferedImage(WIDTH + legend.getWidth() + WIDTH / 100, HEIGHT,
                     BufferedImage.TYPE_INT_ARGB);
 
             PlottingDomainParams params = new PlottingDomainParams(latitudeDependentSST.imageGrid,
@@ -273,18 +307,19 @@ public class LatitudeDependentSST implements FeatureCatalogue {
             g.fillRect(0, 0, WIDTH + legend.getWidth() + WIDTH / 20, HEIGHT);
             g.drawImage(background, 0, 0, WIDTH, HEIGHT, null);
             g.drawImage(sstImage, 0, 0, WIDTH, HEIGHT, null);
-            g.drawImage(legend, WIDTH + WIDTH / 20, 0, legend.getWidth(), legend.getHeight(), null);
-            g.setColor(Color.white);
+            g.drawImage(legend, WIDTH + WIDTH / 100, 0, legend.getWidth(), legend.getHeight(), null);
+            g.setColor(Color.black);
             int fontSize = 10;
             Font font = new Font(Font.MONOSPACED, Font.PLAIN, fontSize);
             int height = 0;
-            while(height < HEIGHT * 0.09) {
+            while(height < HEIGHT / 15) {
                 font = new Font(Font.MONOSPACED, Font.PLAIN, fontSize++);
                 height = g.getFontMetrics(font).getHeight();
             }
+            font = new Font(Font.MONOSPACED, Font.PLAIN, fontSize-1);
             g.setFont(font);
-            g.drawString(dateFormatter.print(time), (int) (WIDTH + WIDTH / 20),
-                    (int) (HEIGHT * 0.97));
+            g.drawString(dateFormatter.print(time), (int) (WIDTH * 0.4),
+                    HEIGHT - 10);
             
             ImageIO.write(frame, "png",
                     new File(outputPath + "/frame-" + frameNoFormat.format(frameNo++) + ".png"));
