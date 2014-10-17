@@ -57,10 +57,13 @@ import uk.ac.rdg.resc.edal.exceptions.DataReadingException;
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
 import uk.ac.rdg.resc.edal.feature.DiscreteFeature;
 import uk.ac.rdg.resc.edal.feature.MapFeature;
+import uk.ac.rdg.resc.edal.geometry.BoundingBox;
+import uk.ac.rdg.resc.edal.geometry.BoundingBoxImpl;
 import uk.ac.rdg.resc.edal.graphics.style.ColourScale;
 import uk.ac.rdg.resc.edal.graphics.style.ColourScheme;
 import uk.ac.rdg.resc.edal.graphics.style.ColourScheme2D;
 import uk.ac.rdg.resc.edal.graphics.style.ContourLayer;
+import uk.ac.rdg.resc.edal.graphics.style.ArrowLayer.ArrowStyle;
 import uk.ac.rdg.resc.edal.graphics.style.ContourLayer.ContourLineStyle;
 import uk.ac.rdg.resc.edal.graphics.style.Drawable.NameAndRange;
 import uk.ac.rdg.resc.edal.graphics.style.MapImage;
@@ -68,8 +71,10 @@ import uk.ac.rdg.resc.edal.graphics.style.MappedSegmentColorScheme2D;
 import uk.ac.rdg.resc.edal.graphics.style.Raster2DLayer;
 import uk.ac.rdg.resc.edal.graphics.style.RasterLayer;
 import uk.ac.rdg.resc.edal.graphics.style.SegmentColourScheme;
+import uk.ac.rdg.resc.edal.graphics.style.SizedArrowLayer;
 import uk.ac.rdg.resc.edal.graphics.style.util.FeatureCatalogue;
 import uk.ac.rdg.resc.edal.graphics.style.util.LegendDataGenerator;
+import uk.ac.rdg.resc.edal.graphics.style.util.FeatureCatalogue.FeaturesAndMemberName;
 import uk.ac.rdg.resc.edal.grid.RegularAxis;
 import uk.ac.rdg.resc.edal.grid.RegularGrid;
 import uk.ac.rdg.resc.edal.grid.RegularGridImpl;
@@ -82,12 +87,14 @@ import uk.ac.rdg.resc.edal.util.Extents;
 import uk.ac.rdg.resc.edal.util.GISUtils;
 import uk.ac.rdg.resc.edal.util.PlottingDomainParams;
 
-public class LatitudeDependentSST implements FeatureCatalogue {
+public class LatitudeDependentSSTWinds implements FeatureCatalogue {
     static final String SST_VAR = "analysed_sst";
+    private static final String WIND_DIR_VAR = "u10v10-dir";
+    private static final String WIND_MAG_VAR = "u10v10-mag";
     private static final String ICE_VAR = "sea_ice_fraction";
     private static final String LATITUDE_VAR = "latitude";
-    private static final int WIDTH = 3600;
-    private static final int HEIGHT = 1800;
+    private static final int WIDTH = 2160;
+    private static final int HEIGHT = 1080;
 
     private TimeAxis timeAxis;
     private RegularGrid imageGrid;
@@ -99,9 +106,11 @@ public class LatitudeDependentSST implements FeatureCatalogue {
 
     private float[] means;
     private float maxRange;
+    private SimpleFeatureCatalogue wind;
 
-    public LatitudeDependentSST(String location, int width, int height) throws IOException,
-            EdalException, NoSuchAuthorityCodeException, FactoryException {
+    public LatitudeDependentSSTWinds(String location, String windLocation, int width, int height,
+            BoundingBox bbox) throws IOException, EdalException, NoSuchAuthorityCodeException,
+            FactoryException {
         this.width = width;
         this.height = height;
 
@@ -113,11 +122,12 @@ public class LatitudeDependentSST implements FeatureCatalogue {
 
         timeAxis = sstMetadata.getTemporalDomain();
 
-        imageGrid = new RegularGridImpl(-180, -90, 180, 90, DefaultGeographicCRS.WGS84, width,
-                height);
+        imageGrid = new RegularGridImpl(bbox, width, height);
         latitudeAxis = imageGrid.getYAxis();
 
         mapFeatures = new HashMap<>();
+
+        wind = new SimpleFeatureCatalogue("wind", windLocation, false);
     }
 
     /**
@@ -142,7 +152,7 @@ public class LatitudeDependentSST implements FeatureCatalogue {
             float mean = 0.0f;
             int points = 0;
             for (DateTime time : times) {
-                MapFeature mapFeature = getMapFeature(time, SST_VAR, true);
+                MapFeature mapFeature = getMapFeature(imageGrid, time, SST_VAR, true);
 
                 Array2D<Number> sstValues = mapFeature.getValues(SST_VAR);
                 for (int x = 0; x < sstValues.getXSize(); x++) {
@@ -172,12 +182,12 @@ public class LatitudeDependentSST implements FeatureCatalogue {
             float runningmean = 0.0f;
             int span = 17;
             for (int i = -span; i <= span; i++) {
-                int currentIndex = i+y;
+                int currentIndex = i + y;
                 if (currentIndex < 0)
                     currentIndex = 0;
-                if (currentIndex > latitudeAxis.size()-1)
-                    currentIndex = latitudeAxis.size()-1;
-                runningmean += means[currentIndex] / (span*2+1);
+                if (currentIndex > latitudeAxis.size() - 1)
+                    currentIndex = latitudeAxis.size() - 1;
+                runningmean += means[currentIndex] / (span * 2 + 1);
             }
             newmeans[y] = runningmean;
         }
@@ -196,7 +206,7 @@ public class LatitudeDependentSST implements FeatureCatalogue {
          * Half the max range so that we get more saturation at the extremes -
          * this will mean that features stand out more clearly
          */
-        maxRange *= 0.7;
+        maxRange *= 0.5;
 
         Map<Float, SegmentColourScheme> colorSchemeMap = new HashMap<>();
         for (Entry<Float, Float> extentEntry : meanValuesMap.entrySet()) {
@@ -217,8 +227,8 @@ public class LatitudeDependentSST implements FeatureCatalogue {
         return new RasterLayer(ICE_VAR, colourScheme);
     }
 
-    private MapFeature getMapFeature(DateTime time, String varId, boolean cache)
-            throws DataReadingException {
+    private MapFeature getMapFeature(RegularGrid imageGrid, DateTime time, String varId,
+            boolean cache) throws DataReadingException {
         CacheKey key = new CacheKey(time, varId);
         if (mapFeatures.containsKey(key)) {
             return mapFeatures.get(key);
@@ -240,11 +250,15 @@ public class LatitudeDependentSST implements FeatureCatalogue {
     public FeaturesAndMemberName getFeaturesForLayer(String id, PlottingDomainParams params)
             throws EdalException {
         if (id.equals(SST_VAR)) {
-            return new FeaturesAndMemberName(getMapFeature(params.getTargetT(), SST_VAR, false),
-                    SST_VAR);
+            return new FeaturesAndMemberName(getMapFeature(params.getImageGrid(),
+                    params.getTargetT(), SST_VAR, false), SST_VAR);
+        } else if (WIND_DIR_VAR.equals(id)) {
+            return wind.getFeaturesForLayer(id, params);
+        } else if (WIND_MAG_VAR.equals(id)) {
+            return wind.getFeaturesForLayer(id, params);
         } else if (id.equals(ICE_VAR)) {
-            return new FeaturesAndMemberName(getMapFeature(params.getTargetT(), ICE_VAR, false),
-                    ICE_VAR);
+            return new FeaturesAndMemberName(getMapFeature(params.getImageGrid(),
+                    params.getTargetT(), ICE_VAR, false), ICE_VAR);
         } else if (id.equals(LATITUDE_VAR)) {
             Map<String, Array2D<Number>> latitudeValuesMap = new HashMap<>();
             latitudeValuesMap.put(LATITUDE_VAR, new Array2D<Number>(height, width) {
@@ -259,8 +273,8 @@ public class LatitudeDependentSST implements FeatureCatalogue {
                 }
             });
             return new FeaturesAndMemberName(new MapFeature(LATITUDE_VAR, "", "",
-                    new MapDomainImpl(imageGrid, null, null, params.getTargetT()), null,
-                    latitudeValuesMap), LATITUDE_VAR);
+                    new MapDomainImpl(params.getImageGrid(), null, null, params.getTargetT()),
+                    null, latitudeValuesMap), LATITUDE_VAR);
         } else {
             return null;
         }
@@ -308,70 +322,59 @@ public class LatitudeDependentSST implements FeatureCatalogue {
         return legend;
     }
 
-    public static void main(String[] args) throws IOException, EdalException, NoSuchAuthorityCodeException, FactoryException {
-        
-        String outputPath = "/glusterfs/marine/users/resc/cci-sst-viz/sst-full";
+    public static void main(String[] args) throws IOException, EdalException,
+            NoSuchAuthorityCodeException, FactoryException {
 
-        BufferedImage background = ImageIO.read(LatitudeDependentSST.class
+        String outputPath = "/home/guy/sst-wind";
+
+        BoundingBox bbox = new BoundingBoxImpl(-110, -7.5, -5, 45, DefaultGeographicCRS.WGS84);
+
+        BufferedImage background = ImageIO.read(LatitudeDependentSSTWinds.class
                 .getResource("/bluemarble_bg.png"));
 
-        LatitudeDependentSST latitudeDependentSST = new LatitudeDependentSST(
-                "/glusterfs/surft/data/SST_CCI_L4/v01.0/**/**/**/*.nc", WIDTH, HEIGHT);
+        LatitudeDependentSSTWinds latitudeDependentSSTWinds = new LatitudeDependentSSTWinds(
+                "/home/guy/Data/cci-sst/2010/**/**/*.nc",
+                "/home/guy/Data/era_interim/2010/era.ncml", WIDTH, HEIGHT, bbox);
+        
+        TimeAxis timeAxis = (TimeAxis) latitudeDependentSSTWinds.wind.getDataset()
+                .getVariableMetadata(WIND_DIR_VAR).getTemporalDomain();
 
         List<DateTime> useInAverage = new ArrayList<>();
-        for (DateTime time : latitudeDependentSST.timeAxis.getCoordinateValues()) {
-            if (time.getYear() == 2010 && time.getDayOfMonth() == 1) {
+        for (DateTime time : latitudeDependentSSTWinds.timeAxis.getCoordinateValues()) {
+            if (time.getYear() == 2010 && time.getDayOfMonth() == 1 && time.getMonthOfYear() > 6 && time.getMonthOfYear() < 11) {
                 useInAverage.add(time);
             }
         }
 
         MapImage compositeImage = new MapImage();
-        Raster2DLayer raster2dLayer = latitudeDependentSST.calculateRaster2DLayer(useInAverage);
-        compositeImage.getLayers().add(raster2dLayer);
-        compositeImage.getLayers().add(latitudeDependentSST.calculateIceLayer());
+        Raster2DLayer sstLayer = latitudeDependentSSTWinds.calculateRaster2DLayer(useInAverage);
 
-        BufferedImage legend = drawLegend(raster2dLayer, latitudeDependentSST.means,
-                latitudeDependentSST.maxRange);
 
-        DateTimeFormatter dateFormatter = (new DateTimeFormatterBuilder()).appendDayOfMonth(2)
-                .appendLiteral("-").appendMonthOfYear(2).appendLiteral("-").appendYear(4, 4)
-                .toFormatter();
+        SizedArrowLayer windLayer = new SizedArrowLayer(WIND_DIR_VAR, WIND_MAG_VAR, 0, 15,
+                Extents.newExtent(0f, 20f), Color.black, ArrowStyle.TRI_ARROW);
+        compositeImage.getLayers().add(sstLayer);
+        compositeImage.getLayers().add(windLayer);
 
-        int frameNo = 0;
+        int frameNo = 497;
         DecimalFormat frameNoFormat = new DecimalFormat("0000");
-        for (DateTime time : latitudeDependentSST.timeAxis.getCoordinateValues()) {
-            System.out.println("Generating frame for time " + time);
-            BufferedImage frame = new BufferedImage(WIDTH + legend.getWidth() + WIDTH / 100,
-                    HEIGHT, BufferedImage.TYPE_INT_ARGB);
+//        for (int i = 838; i < 1336; i++) {
+        for (int i = 980; i < 1336; i++) {
+            DateTime time = timeAxis.getCoordinateValue(i);
+            PlottingDomainParams params = new PlottingDomainParams(WIDTH, HEIGHT, bbox, null, null,
+                    null, null, time);
+            System.out.println("Generating frame for " + time);
 
-            PlottingDomainParams params = new PlottingDomainParams(latitudeDependentSST.imageGrid,
-                    null, null, null, null, time);
-            BufferedImage sstImage = compositeImage.drawImage(params, latitudeDependentSST);
-
-            Graphics2D g = frame.createGraphics();
-            g.setColor(Color.black);
-            g.fillRect(0, 0, WIDTH + legend.getWidth() + WIDTH / 20, HEIGHT);
-            g.drawImage(background, 0, 0, WIDTH, HEIGHT, null);
-            g.drawImage(sstImage, 0, 0, WIDTH, HEIGHT, null);
-            g.drawImage(legend, WIDTH + WIDTH / 100, 0, legend.getWidth(), legend.getHeight(), null);
-            g.setColor(Color.black);
-            int fontSize = 10;
-            Font font = new Font(Font.MONOSPACED, Font.PLAIN, fontSize);
-            int height = 0;
-            while (height < HEIGHT / 15) {
-                font = new Font(Font.MONOSPACED, Font.PLAIN, fontSize++);
-                height = g.getFontMetrics(font).getHeight();
-            }
-            font = new Font(Font.MONOSPACED, Font.PLAIN, fontSize - 1);
-            g.setFont(font);
-            g.drawString(dateFormatter.print(time), (int) (WIDTH * 0.4), HEIGHT - 10);
-
+            BufferedImage frame = compositeImage.drawImage(params, latitudeDependentSSTWinds);
             ImageIO.write(frame, "png",
                     new File(outputPath + "/frame-" + frameNoFormat.format(frameNo++) + ".png"));
         }
 
-        System.out.println("Finished writing frames.  Now run:\nffmpeg -r 25 -i '" + outputPath
-                + "/frame-%04d.png' -c:v libx264 -pix_fmt yuv420p output.mp4");
+//        DateTimeFormatter dateFormatter = (new DateTimeFormatterBuilder()).appendDayOfMonth(2)
+//                .appendLiteral("-").appendMonthOfYear(2).appendLiteral("-").appendYear(4, 4)
+//                .toFormatter();
+
+//        System.out.println("Finished writing frames.  Now run:\nffmpeg -r 25 -i '" + outputPath
+//                + "/frame-%04d.png' -c:v libx264 -pix_fmt yuv420p output.mp4");
     }
 
     private class CacheKey {
@@ -418,8 +421,8 @@ public class LatitudeDependentSST implements FeatureCatalogue {
             return true;
         }
 
-        private LatitudeDependentSST getOuterType() {
-            return LatitudeDependentSST.this;
+        private LatitudeDependentSSTWinds getOuterType() {
+            return LatitudeDependentSSTWinds.this;
         }
     }
 }
