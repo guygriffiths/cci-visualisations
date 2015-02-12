@@ -43,19 +43,21 @@ public class ConstantColourLegendDataGenerator extends LegendDataGenerator {
 
     private float[] means;
     private float span;
+    private String averagedVar;
 
     public ConstantColourLegendDataGenerator(int width, int height, BufferedImage backgroundMask,
-            float fractionExtraX, float fractionExtraY, float[] means, float range) {
+            float fractionExtraX, float fractionExtraY, float[] means, float range, String averagedVar) {
         super(width, height, backgroundMask, fractionExtraX, fractionExtraY);
         this.means = means;
         this.span = range / 2;
+        this.averagedVar = averagedVar;
+        System.out.println("NEED TO CHECK LEGEND WORKS!  IF IT DOES, THIS COMMENT IN CCLDG");
     }
 
     protected MapFeature getMapFeature(NameAndRange field, MatrixType type) {
         Map<String, Array2D<Number>> values = new HashMap<String, Array2D<Number>>();
-
         if (field != null) {
-            if (LatitudeDependentSST.SST_VAR.equals(field.getFieldLabel())) {
+            if (averagedVar.equals(field.getFieldLabel())) {
                 values.put(field.getFieldLabel(), new Array2D<Number>(yAxis.size(), xAxis.size()) {
                     @Override
                     public Number get(int... coords) {

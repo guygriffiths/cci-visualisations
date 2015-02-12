@@ -12,7 +12,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <netbeans.hint.license>bsd-3clause</netbeans.hint.license>
-        <edal-version>1.0-SNAPSHOT</edal-version>
+        <edal-version>1.0-rc1</edal-version>
     </properties>
 
     <inceptionYear>2014</inceptionYear>
@@ -70,6 +70,31 @@
                 <configuration>
                     <mainClass>uk.ac.rdg.resc.cci.LatitudeDependentSST</mainClass>
                 </configuration>
+            </plugin>
+            <plugin>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>2.1</version>
+                <configuration>
+                    <descriptorRefs>
+                        <descriptorRef>
+                            jar-with-dependencies
+                        </descriptorRef>
+                    </descriptorRefs>
+                    <archive>
+                        <manifest>
+                            <addClasspath>true</addClasspath>
+                            <mainClass>uk.ac.rdg.resc.cci.LatitudeDependentSST</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

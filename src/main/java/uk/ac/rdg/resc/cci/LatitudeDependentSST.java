@@ -29,32 +29,22 @@
 package uk.ac.rdg.resc.cci;
 
 import java.awt.Color;
-import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.IOException;
-import java.text.DecimalFormat;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
-
-import javax.imageio.ImageIO;
 
 import org.geotoolkit.referencing.crs.DefaultGeographicCRS;
 import org.joda.time.DateTime;
-import org.joda.time.format.DateTimeFormatter;
-import org.joda.time.format.DateTimeFormatterBuilder;
-import org.opengis.referencing.NoSuchAuthorityCodeException;
-import org.opengis.util.FactoryException;
 
 import uk.ac.rdg.resc.edal.dataset.Dataset;
 import uk.ac.rdg.resc.edal.dataset.cdm.CdmGridDatasetFactory;
 import uk.ac.rdg.resc.edal.domain.MapDomainImpl;
 import uk.ac.rdg.resc.edal.exceptions.DataReadingException;
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
+import uk.ac.rdg.resc.edal.exceptions.VariableNotFoundException;
 import uk.ac.rdg.resc.edal.feature.DiscreteFeature;
 import uk.ac.rdg.resc.edal.feature.MapFeature;
 import uk.ac.rdg.resc.edal.graphics.style.ColourScale;
@@ -75,41 +65,49 @@ import uk.ac.rdg.resc.edal.grid.RegularGrid;
 import uk.ac.rdg.resc.edal.grid.RegularGridImpl;
 import uk.ac.rdg.resc.edal.grid.TimeAxis;
 import uk.ac.rdg.resc.edal.metadata.GridVariableMetadata;
-import uk.ac.rdg.resc.edal.position.HorizontalPosition;
 import uk.ac.rdg.resc.edal.util.Array2D;
 import uk.ac.rdg.resc.edal.util.CollectionUtils;
 import uk.ac.rdg.resc.edal.util.Extents;
-import uk.ac.rdg.resc.edal.util.GISUtils;
 import uk.ac.rdg.resc.edal.util.PlottingDomainParams;
 
 public class LatitudeDependentSST implements FeatureCatalogue {
-    static final String SST_VAR = "analysed_sst";
-    private static final String ICE_VAR = "sea_ice_fraction";
-    private static final String LATITUDE_VAR = "latitude";
-    private static final int WIDTH = 3600;
-    private static final int HEIGHT = 1800;
+    private final String sstVar;
+    private final String iceVar;
+    private final String latitudeVar;
 
-    private TimeAxis timeAxis;
-    private RegularGrid imageGrid;
-    private RegularAxis latitudeAxis;
-    private Map<CacheKey, MapFeature> mapFeatures = null;
-    private Dataset dataset;
-    private int width;
-    private int height;
+    /** The {@link TimeAxis} of the data */
+    private final TimeAxis timeAxis;
+    /** The grid which the image will be drawn onto */
+    private final RegularGrid imageGrid;
+    /** The latitude axis of the image grid */
+    private final RegularAxis latitudeAxis;
+    /** Cached features */
+    private final Map<CacheKey, MapFeature> mapFeatures;
+
+    private final Dataset dataset;
+    private final int width;
+    private final int height;
 
     private float[] means;
-    private float maxRange;
+    private float scaleRange;
 
-    public LatitudeDependentSST(String location, int width, int height) throws IOException,
-            EdalException, NoSuchAuthorityCodeException, FactoryException {
+    private FeaturesAndMemberName latitudeFeature = null;
+    private Raster2DLayer sstLayer = null;
+
+    public LatitudeDependentSST(String location, int width, int height, String sstVar,
+            String iceVar, String latitudeVar) throws IOException, EdalException {
         this.width = width;
         this.height = height;
 
+        this.sstVar = sstVar;
+        this.iceVar = iceVar;
+        this.latitudeVar = latitudeVar;
+        
         CdmGridDatasetFactory datasetFactory = new CdmGridDatasetFactory();
         dataset = datasetFactory.createDataset("cci-sst", location);
 
         GridVariableMetadata sstMetadata = (GridVariableMetadata) dataset
-                .getVariableMetadata(SST_VAR);
+                .getVariableMetadata(sstVar);
 
         timeAxis = sstMetadata.getTemporalDomain();
 
@@ -120,31 +118,59 @@ public class LatitudeDependentSST implements FeatureCatalogue {
         mapFeatures = new HashMap<>();
     }
 
+    public TimeAxis getTimeAxis() {
+        return timeAxis;
+    }
+
+    public RegularGrid getImageGrid() {
+        return imageGrid;
+    }
+
+    public int getWidth() {
+        return width;
+    }
+
+    public int getHeight() {
+        return height;
+    }
+
     /**
      * Generates a Raster2DLayer with a {@link ColourScheme2D} where each
      * latitude has a {@link SegmentColourScheme} based on the average value of
-     * SST at that latitude, and a span equal to 105% of the maximum span. To
-     * save time, this average is calculated over only the files supplied in the
+     * SST at that latitude, and a span equal to a given multiple of the maximum
+     * span. This average is calculated over only the times supplied in the
      * argument.
      * 
-     * @param location
-     *            The files to calculate the average over
+     * @param times
+     *            The {@link DateTime}s over which to calculated the average
+     * @param rangeMultiplier
+     *            The amount to multiply the final calculated range by. Smaller
+     *            numbers will mean more constrast of features, but greater
+     *            saturation at the scale extremes
+     * @param smoothingSpan
+     *            The number of latitude points either side of the mean to
+     *            calculate a running average over (to smooth the data)
      * @return A {@link Raster2DLayer}
      * @throws DataReadingException
+     * @throws VariableNotFoundException
      */
-    public Raster2DLayer calculateRaster2DLayer(List<DateTime> times) throws DataReadingException {
-        maxRange = 0.0f;
+    public void generateSSTLayer(List<DateTime> times, double rangeMultiplier, int smoothingSpan, String palette)
+            throws DataReadingException, VariableNotFoundException {
+        scaleRange = 0.0f;
         means = new float[latitudeAxis.size()];
-        Map<Float, Float> meanValuesMap = new HashMap<>();
+        /*
+         * Calculate the mean value of SST at each latitude, and the maximum
+         * range of SST values
+         */
         for (int y = 0; y < latitudeAxis.size(); y++) {
             Float minSst = Float.MAX_VALUE;
             Float maxSst = -Float.MAX_VALUE;
             float mean = 0.0f;
             int points = 0;
             for (DateTime time : times) {
-                MapFeature mapFeature = getMapFeature(time, SST_VAR, true);
+                MapFeature mapFeature = getMapFeature(time, sstVar, true);
 
-                Array2D<Number> sstValues = mapFeature.getValues(SST_VAR);
+                Array2D<Number> sstValues = mapFeature.getValues(sstVar);
                 for (int x = 0; x < sstValues.getXSize(); x++) {
                     Number sstValue = sstValues.get(y, x);
                     if (sstValue != null) {
@@ -156,80 +182,123 @@ public class LatitudeDependentSST implements FeatureCatalogue {
                 }
             }
             if (minSst != Float.MAX_VALUE) {
-                maxRange = Math.max(maxRange, maxSst - minSst);
+                scaleRange = Math.max(scaleRange, maxSst - minSst);
             }
             mean /= points;
             means[y] = mean;
         }
         /*
-         * Process the means to smooth the curve
+         * Process the means to smooth the curve. We could just have calculated
+         * the means at half the latitude values, but this could potentially
+         * miss the maximum scale range. This routine generally only gets called
+         * once anyway
          */
         for (int y = latitudeAxis.size() - 1; y > latitudeAxis.size() / 2; y--) {
             means[latitudeAxis.size() - 1 - y] = means[y];
         }
+        /*
+         * Replace the mean values with a mean over the given span. This smooths
+         * the curve
+         */
         float[] newmeans = new float[means.length];
         for (int y = 0; y < latitudeAxis.size(); y++) {
             float runningmean = 0.0f;
-            int span = 17;
+            int span = smoothingSpan / 2;
+            int points = 0;
             for (int i = -span; i <= span; i++) {
-                int currentIndex = i+y;
-                if (currentIndex < 0)
-                    currentIndex = 0;
-                if (currentIndex > latitudeAxis.size()-1)
-                    currentIndex = latitudeAxis.size()-1;
-                runningmean += means[currentIndex] / (span*2+1);
+                int currentIndex = i + y;
+                if (currentIndex < 0 || currentIndex > latitudeAxis.size() - 1)
+                    continue;
+                runningmean += means[currentIndex];
+                points++;
             }
-            newmeans[y] = runningmean;
+            newmeans[y] = runningmean / points;
         }
         means = newmeans;
 
+        /*
+         * Adjust the max range by the multiplier to allow for more contrast
+         */
+        scaleRange *= rangeMultiplier;
+
+        /*
+         * Generate a Map of latitude values to ColourSchemes
+         */
+        Map<Float, SegmentColourScheme> colorSchemeMap = new HashMap<>();
         for (int y = 0; y < latitudeAxis.size(); y++) {
             float latVal = latitudeAxis.getCoordinateValue(y).floatValue();
-            meanValuesMap.put(latVal, means[y]);
+            float mean = means[y];
+            SegmentColourScheme colourScheme = new SegmentColourScheme(new ColourScale(mean
+                    - scaleRange / 2, mean + scaleRange / 2, false), null, null,
+                    new Color(0, true), palette, 250);
+            colorSchemeMap.put(latVal, colourScheme);
         }
 
         /*
-         * Now process the means
+         * Now create the 2d colour scheme
          */
-
-        /*
-         * Half the max range so that we get more saturation at the extremes -
-         * this will mean that features stand out more clearly
-         */
-        maxRange *= 0.7;
-
-        Map<Float, SegmentColourScheme> colorSchemeMap = new HashMap<>();
-        for (Entry<Float, Float> extentEntry : meanValuesMap.entrySet()) {
-            SegmentColourScheme colourScheme = new SegmentColourScheme(new ColourScale(
-                    extentEntry.getValue() - maxRange / 2, extentEntry.getValue() + maxRange / 2,
-                    false), null, null, new Color(0, true), "#080D38,#41B6C4,#FFFFD9", 250);
-            colorSchemeMap.put(extentEntry.getKey(), colourScheme);
-        }
-
         ColourScheme2D colourScheme = new MappedSegmentColorScheme2D(colorSchemeMap, new Color(0,
                 true));
-        return new Raster2DLayer(LATITUDE_VAR, SST_VAR, colourScheme);
+        /*
+         * And the corresponding 2d raster layer
+         */
+        sstLayer = new Raster2DLayer(latitudeVar, sstVar, colourScheme);
     }
 
-    public RasterLayer calculateIceLayer() {
+    public Raster2DLayer getSSTLayer() {
+        if (sstLayer == null) {
+            throw new IllegalStateException(
+                    "SST Layer not initialised.  You must call generateSSTLayer() with a list of times to use in the latitude averaging before you can call this method.");
+        }
+        return sstLayer;
+    }
+
+    /**
+     * @return A {@link RasterLayer} representing the ice field of the data
+     */
+    public RasterLayer getIceLayer() {
         ColourScheme colourScheme = new SegmentColourScheme(new ColourScale(0f, 1.0f, false),
                 new Color(0, true), null, new Color(0, true), "#00ffffff,#ffffff", 100);
-        return new RasterLayer(ICE_VAR, colourScheme);
+        return new RasterLayer(iceVar, colourScheme);
     }
 
+    /**
+     * Reads a {@link MapFeature} from the data/cache
+     * 
+     * @param time
+     *            The {@link DateTime} at which to read the feature
+     * @param varId
+     *            The variable ID to read
+     * @param cache
+     *            Whether to cache the resulting feature
+     * @return The extracted {@link MapFeature}
+     * @throws DataReadingException
+     * @throws VariableNotFoundException
+     */
     private MapFeature getMapFeature(DateTime time, String varId, boolean cache)
-            throws DataReadingException {
+            throws DataReadingException, VariableNotFoundException {
         CacheKey key = new CacheKey(time, varId);
         if (mapFeatures.containsKey(key)) {
             return mapFeatures.get(key);
         } else {
+            /*
+             * Extract the map feature onto the desired image grid
+             */
             PlottingDomainParams params = new PlottingDomainParams(imageGrid, null, null, null,
                     null, time);
             List<? extends DiscreteFeature<?, ?>> extractedMapFeatures = dataset
                     .extractMapFeatures(CollectionUtils.setOf(varId), params);
+            /*
+             * Exactly one feature is extracted.
+             */
             assert (extractedMapFeatures.size() == 1);
             MapFeature mapFeature = (MapFeature) extractedMapFeatures.get(0);
             if (cache) {
+                /*
+                 * Cache the feature if required. Since this generally works
+                 * with a very large dataset, only features which will be used
+                 * multiple times should be cached
+                 */
                 mapFeatures.put(key, mapFeature);
             }
             return mapFeature;
@@ -237,46 +306,58 @@ public class LatitudeDependentSST implements FeatureCatalogue {
     }
 
     @Override
-    public FeaturesAndMemberName getFeaturesForLayer(String id, PlottingDomainParams params)
-            throws EdalException {
-        if (id.equals(SST_VAR)) {
-            return new FeaturesAndMemberName(getMapFeature(params.getTargetT(), SST_VAR, false),
-                    SST_VAR);
-        } else if (id.equals(ICE_VAR)) {
-            return new FeaturesAndMemberName(getMapFeature(params.getTargetT(), ICE_VAR, false),
-                    ICE_VAR);
-        } else if (id.equals(LATITUDE_VAR)) {
-            Map<String, Array2D<Number>> latitudeValuesMap = new HashMap<>();
-            latitudeValuesMap.put(LATITUDE_VAR, new Array2D<Number>(height, width) {
-                @Override
-                public Number get(int... coords) {
-                    return latitudeAxis.getCoordinateValue(coords[Y_IND]);
-                }
+    public FeaturesAndMemberName getFeaturesForLayer(String id, PlottingDomainParams params) {
+        /*
+         * This is called by the image generation code (i.e. when we call
+         * drawImage() on the MapImage object).
+         * 
+         * Generally we simply read the given variable at the given time.
+         * However, the underlying data has no 2d latitude variable, so we add a
+         * special case for that
+         */
+        if (id.equals(latitudeVar)) {
+            /*
+             * We only want to generate this once, since it will never change
+             */
+            if (latitudeFeature == null) {
+                Map<String, Array2D<Number>> latitudeValuesMap = new HashMap<>();
+                latitudeValuesMap.put(latitudeVar, new Array2D<Number>(height, width) {
+                    @Override
+                    public Number get(int... coords) {
+                        return latitudeAxis.getCoordinateValue(coords[Y_IND]);
+                    }
 
-                @Override
-                public void set(Number value, int... coords) {
-                    throw new UnsupportedOperationException();
-                }
-            });
-            return new FeaturesAndMemberName(new MapFeature(LATITUDE_VAR, "", "",
-                    new MapDomainImpl(imageGrid, null, null, params.getTargetT()), null,
-                    latitudeValuesMap), LATITUDE_VAR);
+                    @Override
+                    public void set(Number value, int... coords) {
+                        throw new UnsupportedOperationException();
+                    }
+                });
+                latitudeFeature = new FeaturesAndMemberName(new MapFeature(latitudeVar, "", "",
+                        new MapDomainImpl(imageGrid, null, null, params.getTargetT()), null,
+                        latitudeValuesMap), latitudeVar);
+            }
+            return latitudeFeature;
         } else {
-            return null;
+            try {
+                return new FeaturesAndMemberName(getMapFeature(params.getTargetT(), id, false), id);
+            } catch (DataReadingException | VariableNotFoundException e) {
+                return null;
+            }
         }
     }
 
-    public static BufferedImage drawLegend(Raster2DLayer layer, float[] means, float range)
-            throws EdalException {
-        int width = (int) (HEIGHT * 0.4);
-        int height = HEIGHT;
+    public BufferedImage drawLegend(int width, int height) throws EdalException {
+        if (sstLayer == null) {
+            throw new IllegalStateException(
+                    "SST Layer not initialised.  You must call generateSSTLayer() with a list of times to use in the latitude averaging before you can call this method.");
+        }
         float extra = 0.1f;
 //        LegendDataGenerator dataGenerator = new LegendDataGenerator(width, height, null, extra, 0f);
         LegendDataGenerator dataGenerator = new ConstantColourLegendDataGenerator(width, height,
-                null, extra, 0f, means, range);
+                null, extra, 0f, means, scaleRange, sstVar);
         NameAndRange sstNameAndRange = null;
-        for (NameAndRange testNameAndRange : layer.getFieldsWithScales()) {
-            if (testNameAndRange.getFieldLabel().equals(SST_VAR)) {
+        for (NameAndRange testNameAndRange : sstLayer.getFieldsWithScales()) {
+            if (testNameAndRange.getFieldLabel().equals(sstVar)) {
                 sstNameAndRange = testNameAndRange;
                 break;
             }
@@ -289,15 +370,15 @@ public class LatitudeDependentSST implements FeatureCatalogue {
         graphics.fillRect(0, 0, width, height);
 
         MapImage contoursRaster = new MapImage();
-        contoursRaster.getLayers().add(layer);
-        ContourLayer contours = new ContourLayer(SST_VAR, new ColourScale(250f, 320f, false),
+        contoursRaster.getLayers().add(sstLayer);
+        ContourLayer contours = new ContourLayer(sstVar, new ColourScale(250f, 320f, false),
                 false, 14, Color.darkGray, 1, ContourLineStyle.SOLID, true);
         contoursRaster.getLayers().add(contours);
 
         BufferedImage colorbar2d = contoursRaster.drawImage(
                 dataGenerator.getPlottingDomainParams(), dataGenerator.getFeatureCatalogue(
                         sstNameAndRange,
-                        new NameAndRange(LATITUDE_VAR, Extents.newExtent(-90f, 90f))));
+                        new NameAndRange(latitudeVar, Extents.newExtent(-90f, 90f))));
 //        BufferedImage legendLabels = MapImage.getLegendLabels(sstNameAndRange, extra, width,
 //                Color.white, true, HEIGHT / 60);
 //        AffineTransform at = new AffineTransform();
@@ -306,72 +387,6 @@ public class LatitudeDependentSST implements FeatureCatalogue {
         graphics.drawImage(colorbar2d, 0, 0, null);
 //        graphics.drawImage(legendLabels, at, null);
         return legend;
-    }
-
-    public static void main(String[] args) throws IOException, EdalException, NoSuchAuthorityCodeException, FactoryException {
-        
-        String outputPath = "/glusterfs/marine/users/resc/cci-sst-viz/sst-full";
-
-        BufferedImage background = ImageIO.read(LatitudeDependentSST.class
-                .getResource("/bluemarble_bg.png"));
-
-        LatitudeDependentSST latitudeDependentSST = new LatitudeDependentSST(
-                "/glusterfs/surft/data/SST_CCI_L4/v01.0/**/**/**/*.nc", WIDTH, HEIGHT);
-
-        List<DateTime> useInAverage = new ArrayList<>();
-        for (DateTime time : latitudeDependentSST.timeAxis.getCoordinateValues()) {
-            if (time.getYear() == 2010 && time.getDayOfMonth() == 1) {
-                useInAverage.add(time);
-            }
-        }
-
-        MapImage compositeImage = new MapImage();
-        Raster2DLayer raster2dLayer = latitudeDependentSST.calculateRaster2DLayer(useInAverage);
-        compositeImage.getLayers().add(raster2dLayer);
-        compositeImage.getLayers().add(latitudeDependentSST.calculateIceLayer());
-
-        BufferedImage legend = drawLegend(raster2dLayer, latitudeDependentSST.means,
-                latitudeDependentSST.maxRange);
-
-        DateTimeFormatter dateFormatter = (new DateTimeFormatterBuilder()).appendDayOfMonth(2)
-                .appendLiteral("-").appendMonthOfYear(2).appendLiteral("-").appendYear(4, 4)
-                .toFormatter();
-
-        int frameNo = 0;
-        DecimalFormat frameNoFormat = new DecimalFormat("0000");
-        for (DateTime time : latitudeDependentSST.timeAxis.getCoordinateValues()) {
-            System.out.println("Generating frame for time " + time);
-            BufferedImage frame = new BufferedImage(WIDTH + legend.getWidth() + WIDTH / 100,
-                    HEIGHT, BufferedImage.TYPE_INT_ARGB);
-
-            PlottingDomainParams params = new PlottingDomainParams(latitudeDependentSST.imageGrid,
-                    null, null, null, null, time);
-            BufferedImage sstImage = compositeImage.drawImage(params, latitudeDependentSST);
-
-            Graphics2D g = frame.createGraphics();
-            g.setColor(Color.black);
-            g.fillRect(0, 0, WIDTH + legend.getWidth() + WIDTH / 20, HEIGHT);
-            g.drawImage(background, 0, 0, WIDTH, HEIGHT, null);
-            g.drawImage(sstImage, 0, 0, WIDTH, HEIGHT, null);
-            g.drawImage(legend, WIDTH + WIDTH / 100, 0, legend.getWidth(), legend.getHeight(), null);
-            g.setColor(Color.black);
-            int fontSize = 10;
-            Font font = new Font(Font.MONOSPACED, Font.PLAIN, fontSize);
-            int height = 0;
-            while (height < HEIGHT / 15) {
-                font = new Font(Font.MONOSPACED, Font.PLAIN, fontSize++);
-                height = g.getFontMetrics(font).getHeight();
-            }
-            font = new Font(Font.MONOSPACED, Font.PLAIN, fontSize - 1);
-            g.setFont(font);
-            g.drawString(dateFormatter.print(time), (int) (WIDTH * 0.4), HEIGHT - 10);
-
-            ImageIO.write(frame, "png",
-                    new File(outputPath + "/frame-" + frameNoFormat.format(frameNo++) + ".png"));
-        }
-
-        System.out.println("Finished writing frames.  Now run:\nffmpeg -r 25 -i '" + outputPath
-                + "/frame-%04d.png' -c:v libx264 -pix_fmt yuv420p output.mp4");
     }
 
     private class CacheKey {
