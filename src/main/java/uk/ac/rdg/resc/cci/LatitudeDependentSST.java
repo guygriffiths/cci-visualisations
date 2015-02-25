@@ -48,7 +48,6 @@ import uk.ac.rdg.resc.edal.exceptions.VariableNotFoundException;
 import uk.ac.rdg.resc.edal.feature.DiscreteFeature;
 import uk.ac.rdg.resc.edal.feature.MapFeature;
 import uk.ac.rdg.resc.edal.graphics.style.ColourScale;
-import uk.ac.rdg.resc.edal.graphics.style.ColourScheme;
 import uk.ac.rdg.resc.edal.graphics.style.ColourScheme2D;
 import uk.ac.rdg.resc.edal.graphics.style.ContourLayer;
 import uk.ac.rdg.resc.edal.graphics.style.ContourLayer.ContourLineStyle;
@@ -56,37 +55,31 @@ import uk.ac.rdg.resc.edal.graphics.style.Drawable.NameAndRange;
 import uk.ac.rdg.resc.edal.graphics.style.MapImage;
 import uk.ac.rdg.resc.edal.graphics.style.MappedSegmentColorScheme2D;
 import uk.ac.rdg.resc.edal.graphics.style.Raster2DLayer;
-import uk.ac.rdg.resc.edal.graphics.style.RasterLayer;
 import uk.ac.rdg.resc.edal.graphics.style.SegmentColourScheme;
 import uk.ac.rdg.resc.edal.graphics.style.util.FeatureCatalogue;
 import uk.ac.rdg.resc.edal.graphics.style.util.LegendDataGenerator;
 import uk.ac.rdg.resc.edal.grid.RegularAxis;
 import uk.ac.rdg.resc.edal.grid.RegularGrid;
-import uk.ac.rdg.resc.edal.grid.RegularGridImpl;
 import uk.ac.rdg.resc.edal.grid.TimeAxis;
 import uk.ac.rdg.resc.edal.metadata.GridVariableMetadata;
+import uk.ac.rdg.resc.edal.position.HorizontalPosition;
 import uk.ac.rdg.resc.edal.util.Array2D;
 import uk.ac.rdg.resc.edal.util.CollectionUtils;
 import uk.ac.rdg.resc.edal.util.Extents;
+import uk.ac.rdg.resc.edal.util.GISUtils;
 import uk.ac.rdg.resc.edal.util.PlottingDomainParams;
 
 public class LatitudeDependentSST implements FeatureCatalogue {
+    public static final String LATITUDE = "latitude";
+
     private final String sstVar;
-    private final String iceVar;
-    private final String latitudeVar;
 
     /** The {@link TimeAxis} of the data */
     private final TimeAxis timeAxis;
-    /** The grid which the image will be drawn onto */
-    private final RegularGrid imageGrid;
-    /** The latitude axis of the image grid */
-    private final RegularAxis latitudeAxis;
     /** Cached features */
     private final Map<CacheKey, MapFeature> mapFeatures;
 
     private final Dataset dataset;
-    private final int width;
-    private final int height;
 
     private float[] means;
     private float scaleRange;
@@ -94,15 +87,12 @@ public class LatitudeDependentSST implements FeatureCatalogue {
     private FeaturesAndMemberName latitudeFeature = null;
     private Raster2DLayer sstLayer = null;
 
-    public LatitudeDependentSST(String location, int width, int height, String sstVar,
-            String iceVar, String latitudeVar) throws IOException, EdalException {
-        this.width = width;
-        this.height = height;
+    private final RegularGrid averagingGrid;
 
+    public LatitudeDependentSST(String location, String sstVar, RegularGrid averagingGrid)
+            throws IOException, EdalException {
         this.sstVar = sstVar;
-        this.iceVar = iceVar;
-        this.latitudeVar = latitudeVar;
-        
+
         CdmGridDatasetFactory datasetFactory = new CdmGridDatasetFactory();
         dataset = datasetFactory.createDataset("cci-sst", location);
 
@@ -111,27 +101,13 @@ public class LatitudeDependentSST implements FeatureCatalogue {
 
         timeAxis = sstMetadata.getTemporalDomain();
 
-        imageGrid = new RegularGridImpl(-180, -90, 180, 90, DefaultGeographicCRS.WGS84, width,
-                height);
-        latitudeAxis = imageGrid.getYAxis();
+        this.averagingGrid = averagingGrid;
 
         mapFeatures = new HashMap<>();
     }
 
     public TimeAxis getTimeAxis() {
         return timeAxis;
-    }
-
-    public RegularGrid getImageGrid() {
-        return imageGrid;
-    }
-
-    public int getWidth() {
-        return width;
-    }
-
-    public int getHeight() {
-        return height;
     }
 
     /**
@@ -154,9 +130,10 @@ public class LatitudeDependentSST implements FeatureCatalogue {
      * @throws DataReadingException
      * @throws VariableNotFoundException
      */
-    public void generateSSTLayer(List<DateTime> times, double rangeMultiplier, int smoothingSpan, String palette)
-            throws DataReadingException, VariableNotFoundException {
+    public void generateSSTLayer(List<DateTime> times, double rangeMultiplier, int smoothingSpan,
+            String palette) throws DataReadingException, VariableNotFoundException {
         scaleRange = 0.0f;
+        RegularAxis latitudeAxis = averagingGrid.getYAxis();
         means = new float[latitudeAxis.size()];
         /*
          * Calculate the mean value of SST at each latitude, and the maximum
@@ -168,12 +145,11 @@ public class LatitudeDependentSST implements FeatureCatalogue {
             float mean = 0.0f;
             int points = 0;
             for (DateTime time : times) {
-                MapFeature mapFeature = getMapFeature(time, sstVar, true);
-
+                MapFeature mapFeature = getMapFeature(time, sstVar, true, averagingGrid);
                 Array2D<Number> sstValues = mapFeature.getValues(sstVar);
                 for (int x = 0; x < sstValues.getXSize(); x++) {
                     Number sstValue = sstValues.get(y, x);
-                    if (sstValue != null) {
+                    if (sstValue != null && !Float.isNaN(sstValue.floatValue())) {
                         minSst = Math.min(minSst, sstValue.floatValue());
                         maxSst = Math.max(maxSst, sstValue.floatValue());
                         mean += sstValue.doubleValue();
@@ -222,27 +198,26 @@ public class LatitudeDependentSST implements FeatureCatalogue {
         scaleRange *= rangeMultiplier;
 
         /*
-         * Generate a Map of latitude values to ColourSchemes
+         * Generate a ColourScheme for each latitude
          */
-        Map<Float, SegmentColourScheme> colorSchemeMap = new HashMap<>();
+        SegmentColourScheme[] schemes = new SegmentColourScheme[latitudeAxis.size()];
         for (int y = 0; y < latitudeAxis.size(); y++) {
-            float latVal = latitudeAxis.getCoordinateValue(y).floatValue();
             float mean = means[y];
             SegmentColourScheme colourScheme = new SegmentColourScheme(new ColourScale(mean
                     - scaleRange / 2, mean + scaleRange / 2, false), null, null,
                     new Color(0, true), palette, 250);
-            colorSchemeMap.put(latVal, colourScheme);
+            schemes[y] = colourScheme;
         }
 
         /*
          * Now create the 2d colour scheme
          */
-        ColourScheme2D colourScheme = new MappedSegmentColorScheme2D(colorSchemeMap, new Color(0,
-                true));
+        ColourScheme2D colourScheme = new MappedSegmentColorScheme2D(latitudeAxis, schemes,
+                new Color(0, true));
         /*
          * And the corresponding 2d raster layer
          */
-        sstLayer = new Raster2DLayer(latitudeVar, sstVar, colourScheme);
+        sstLayer = new Raster2DLayer(LATITUDE, sstVar, colourScheme);
     }
 
     public Raster2DLayer getSSTLayer() {
@@ -251,15 +226,6 @@ public class LatitudeDependentSST implements FeatureCatalogue {
                     "SST Layer not initialised.  You must call generateSSTLayer() with a list of times to use in the latitude averaging before you can call this method.");
         }
         return sstLayer;
-    }
-
-    /**
-     * @return A {@link RasterLayer} representing the ice field of the data
-     */
-    public RasterLayer getIceLayer() {
-        ColourScheme colourScheme = new SegmentColourScheme(new ColourScale(0f, 1.0f, false),
-                new Color(0, true), null, new Color(0, true), "#00ffffff,#ffffff", 100);
-        return new RasterLayer(iceVar, colourScheme);
     }
 
     /**
@@ -275,9 +241,9 @@ public class LatitudeDependentSST implements FeatureCatalogue {
      * @throws DataReadingException
      * @throws VariableNotFoundException
      */
-    private MapFeature getMapFeature(DateTime time, String varId, boolean cache)
-            throws DataReadingException, VariableNotFoundException {
-        CacheKey key = new CacheKey(time, varId);
+    private MapFeature getMapFeature(DateTime time, String varId, boolean cache,
+            RegularGrid imageGrid) throws DataReadingException, VariableNotFoundException {
+        CacheKey key = new CacheKey(time, varId, imageGrid);
         if (mapFeatures.containsKey(key)) {
             return mapFeatures.get(key);
         } else {
@@ -315,31 +281,46 @@ public class LatitudeDependentSST implements FeatureCatalogue {
          * However, the underlying data has no 2d latitude variable, so we add a
          * special case for that
          */
-        if (id.equals(latitudeVar)) {
+        if (id.equals(LATITUDE)) {
             /*
              * We only want to generate this once, since it will never change
              */
             if (latitudeFeature == null) {
+                final RegularGrid imageGrid = params.getImageGrid();
                 Map<String, Array2D<Number>> latitudeValuesMap = new HashMap<>();
-                latitudeValuesMap.put(latitudeVar, new Array2D<Number>(height, width) {
-                    @Override
-                    public Number get(int... coords) {
-                        return latitudeAxis.getCoordinateValue(coords[Y_IND]);
-                    }
+                latitudeValuesMap.put(LATITUDE,
+                        new Array2D<Number>(imageGrid.getYSize(), imageGrid.getXSize()) {
+                            @Override
+                            public Number get(int... coords) {
+                                Double yval = imageGrid.getYAxis()
+                                        .getCoordinateValue(coords[Y_IND]);
+                                Double xval = imageGrid.getXAxis()
+                                        .getCoordinateValue(coords[X_IND]);
+                                HorizontalPosition llPos = GISUtils.transformPosition(
+                                        new HorizontalPosition(xval, yval, imageGrid
+                                                .getCoordinateReferenceSystem()),
+                                        DefaultGeographicCRS.WGS84);
 
-                    @Override
-                    public void set(Number value, int... coords) {
-                        throw new UnsupportedOperationException();
-                    }
-                });
-                latitudeFeature = new FeaturesAndMemberName(new MapFeature(latitudeVar, "", "",
+                                RegularAxis latitudeAxis = averagingGrid.getYAxis();
+                                int latIndex = latitudeAxis
+                                        .findIndexOf(llPos.getY());
+                                return latitudeAxis.getCoordinateValue(latIndex);
+                            }
+
+                            @Override
+                            public void set(Number value, int... coords) {
+                                throw new UnsupportedOperationException();
+                            }
+                        });
+                latitudeFeature = new FeaturesAndMemberName(new MapFeature(LATITUDE, "Temperature_height_above_ground", "",
                         new MapDomainImpl(imageGrid, null, null, params.getTargetT()), null,
-                        latitudeValuesMap), latitudeVar);
+                        latitudeValuesMap), LATITUDE);
             }
             return latitudeFeature;
         } else {
             try {
-                return new FeaturesAndMemberName(getMapFeature(params.getTargetT(), id, false), id);
+                return new FeaturesAndMemberName(getMapFeature(params.getTargetT(), id, false,
+                        params.getImageGrid()), id);
             } catch (DataReadingException | VariableNotFoundException e) {
                 return null;
             }
@@ -371,14 +352,13 @@ public class LatitudeDependentSST implements FeatureCatalogue {
 
         MapImage contoursRaster = new MapImage();
         contoursRaster.getLayers().add(sstLayer);
-        ContourLayer contours = new ContourLayer(sstVar, new ColourScale(250f, 320f, false),
-                false, 14, Color.darkGray, 1, ContourLineStyle.SOLID, true);
+        ContourLayer contours = new ContourLayer(sstVar, new ColourScale(250f, 320f, false), false,
+                14, Color.darkGray, 1, ContourLineStyle.SOLID, true);
         contoursRaster.getLayers().add(contours);
 
         BufferedImage colorbar2d = contoursRaster.drawImage(
                 dataGenerator.getPlottingDomainParams(), dataGenerator.getFeatureCatalogue(
-                        sstNameAndRange,
-                        new NameAndRange(latitudeVar, Extents.newExtent(-90f, 90f))));
+                        sstNameAndRange, new NameAndRange(LATITUDE, Extents.newExtent(-90f, 90f))));
 //        BufferedImage legendLabels = MapImage.getLegendLabels(sstNameAndRange, extra, width,
 //                Color.white, true, HEIGHT / 60);
 //        AffineTransform at = new AffineTransform();
@@ -392,11 +372,13 @@ public class LatitudeDependentSST implements FeatureCatalogue {
     private class CacheKey {
         private DateTime time;
         private String varId;
+        private RegularGrid grid;
 
-        public CacheKey(DateTime time, String varId) {
+        public CacheKey(DateTime time, String varId, RegularGrid grid) {
             super();
             this.time = time;
             this.varId = varId;
+            this.grid = grid;
         }
 
         @Override
@@ -404,6 +386,7 @@ public class LatitudeDependentSST implements FeatureCatalogue {
             final int prime = 31;
             int result = 1;
             result = prime * result + getOuterType().hashCode();
+            result = prime * result + ((grid == null) ? 0 : grid.hashCode());
             result = prime * result + ((time == null) ? 0 : time.hashCode());
             result = prime * result + ((varId == null) ? 0 : varId.hashCode());
             return result;
@@ -419,6 +402,11 @@ public class LatitudeDependentSST implements FeatureCatalogue {
                 return false;
             CacheKey other = (CacheKey) obj;
             if (!getOuterType().equals(other.getOuterType()))
+                return false;
+            if (grid == null) {
+                if (other.grid != null)
+                    return false;
+            } else if (!grid.equals(other.grid))
                 return false;
             if (time == null) {
                 if (other.time != null)

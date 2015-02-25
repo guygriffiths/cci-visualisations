@@ -51,7 +51,6 @@ public class ConstantColourLegendDataGenerator extends LegendDataGenerator {
         this.means = means;
         this.span = range / 2;
         this.averagedVar = averagedVar;
-        System.out.println("NEED TO CHECK LEGEND WORKS!  IF IT DOES, THIS COMMENT IN CCLDG");
     }
 
     protected MapFeature getMapFeature(NameAndRange field, MatrixType type) {

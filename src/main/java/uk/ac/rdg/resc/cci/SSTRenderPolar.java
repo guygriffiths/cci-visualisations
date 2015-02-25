@@ -28,12 +28,12 @@
 
 package uk.ac.rdg.resc.cci;
 
+import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
@@ -42,7 +42,6 @@ import java.util.Properties;
 
 import javax.imageio.ImageIO;
 
-import org.geotoolkit.referencing.crs.DefaultGeographicCRS;
 import org.joda.time.DateTime;
 import org.joda.time.chrono.ISOChronology;
 import org.joda.time.format.DateTimeFormatter;
@@ -50,14 +49,10 @@ import org.joda.time.format.DateTimeFormatterBuilder;
 
 import uk.ac.rdg.resc.edal.exceptions.BadTimeFormatException;
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
-import uk.ac.rdg.resc.edal.graphics.style.ColourScale;
-import uk.ac.rdg.resc.edal.graphics.style.ColourScheme;
+import uk.ac.rdg.resc.edal.geometry.BoundingBoxImpl;
 import uk.ac.rdg.resc.edal.graphics.style.MapImage;
-import uk.ac.rdg.resc.edal.graphics.style.RasterLayer;
-import uk.ac.rdg.resc.edal.graphics.style.SegmentColourScheme;
 import uk.ac.rdg.resc.edal.grid.RegularGrid;
 import uk.ac.rdg.resc.edal.grid.RegularGridImpl;
-import uk.ac.rdg.resc.edal.position.HorizontalPosition;
 import uk.ac.rdg.resc.edal.util.GISUtils;
 import uk.ac.rdg.resc.edal.util.PlottingDomainParams;
 import uk.ac.rdg.resc.edal.util.TimeUtils;
@@ -67,18 +62,13 @@ import uk.ac.rdg.resc.edal.util.TimeUtils;
  * of global latitude-averaged SST images, ready to be converted into an
  * animation
  */
-public class SSTRender {
+public class SSTRenderPolar {
     public static void main(String[] args) throws IOException, EdalException {
         /*
          * Load a properties file to determine what to plot.
          */
         Properties properties = new Properties();
-        File propertiesFile = new File("sst_render.properties");
-        if (propertiesFile.exists()) {
-            properties.load(new FileReader(propertiesFile));
-        } else {
-            properties.load(SSTRender.class.getResourceAsStream("/sst_render.properties"));
-        }
+        properties.load(SSTRenderPolar.class.getResourceAsStream("/sst_render_polar.properties"));
         String outputPath = properties.getProperty("outputPath");
         String dataPath = properties.getProperty("dataPath");
 
@@ -88,12 +78,8 @@ public class SSTRender {
             System.exit(1);
         }
 
-        String widthStr = properties.getProperty("imageWidth");
-        String heightStr = properties.getProperty("imageHeight");
+        String hemisphereSizeStr = properties.getProperty("hemisphereSize");
         String palette = properties.getProperty("palette", "default");
-        String includeLegendStr = properties.getProperty("includeLegend");
-        String legendPath = properties.getProperty("legendPath");
-        String legendWidthStr = properties.getProperty("legendWidth");
         String includeDateStr = properties.getProperty("includeDate");
 
         String startStr = properties.getProperty("startData");
@@ -109,41 +95,10 @@ public class SSTRender {
         /*
          * Determine the size of the image to plot
          */
-        int width = 1920;
-        int height = 960;
-        if (widthStr != null) {
+        int size = 960;
+        if (hemisphereSizeStr != null) {
             try {
-                width = Integer.parseInt(widthStr);
-            } catch (NumberFormatException e) {
-                /* Ignore - use default value if property isn't an integer */
-            }
-        }
-        if (heightStr != null) {
-            try {
-                height = Integer.parseInt(heightStr);
-            } catch (NumberFormatException e) {
-                /* Ignore - use default value if property isn't an integer */
-            }
-        }
-
-        RegularGrid imageGrid = new RegularGridImpl(-180, -90, 180, 90, DefaultGeographicCRS.WGS84,
-                width, height);
-
-        /*
-         * Do we want a legend on the frames?
-         */
-        boolean includeLegend = true;
-        if (includeLegendStr != null) {
-            includeLegend = Boolean.parseBoolean(includeLegendStr);
-        }
-
-        /*
-         * How wide should the legend be?
-         */
-        int legendWidth = (int) (0.4 * height);
-        if (legendWidthStr != null) {
-            try {
-                legendWidth = Integer.parseInt(legendWidthStr);
+                size = Integer.parseInt(hemisphereSizeStr);
             } catch (NumberFormatException e) {
                 /* Ignore - use default value if property isn't an integer */
             }
@@ -158,11 +113,19 @@ public class SSTRender {
         }
 
         /*
-         * Create the image generator object, using the image size as the
-         * sampling dimensions
+         * The grid to calculate the average over.
+         */
+        RegularGrid averagingGrid = new RegularGridImpl(BoundingBoxImpl.global(), 480, 480);
+        /*
+         * Create the image generator object
          */
         LatitudeDependentSST latitudeDependentSST = new LatitudeDependentSST(dataPath, sstVar,
-                imageGrid);
+                averagingGrid);
+
+        RegularGridImpl npGrid = new RegularGridImpl(-9000000, -9000000, 9000000, 9000000,
+                GISUtils.getCrs("EPSG:3408"), size, size);
+        RegularGridImpl spGrid = new RegularGridImpl(-9000000, -9000000, 9000000, 9000000,
+                GISUtils.getCrs("EPSG:3409"), size, size);
 
         /*
          * Using the time axis of the dataset, select the indices we want to
@@ -262,41 +225,32 @@ public class SSTRender {
         /*
          * Read the background blue marble image
          */
-        BufferedImage background = ImageIO.read(SSTRender.class.getResource("/bluemarble_bg.png"));
+        BufferedImage npBackground = ImageIO.read(SSTRenderPolar.class.getResource("/3408.png"));
+        BufferedImage spBackground = ImageIO.read(SSTRenderPolar.class.getResource("/3409.png"));
+
+        BufferedImage mask = new BufferedImage(size * 2, size, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D gmask = mask.createGraphics();
+        gmask.setColor(Color.black);
+        gmask.fillRect(0, 0, size * 2, size);
+        gmask.setComposite(AlphaComposite.Clear);
+        gmask.fillOval(0, 0, size, size);
+        gmask.setComposite(AlphaComposite.Clear);
+        gmask.fillOval(size, 0, size, size);
+        gmask.dispose();
 
         /*
          * Generate the 2D latitude-dependent raster image layer (just
          * calculates the average and generates the layer, doesn't plot the
          * data)
          */
-        latitudeDependentSST.generateSSTLayer(useInAverage, 0.7, height / 20, palette);
+        latitudeDependentSST.generateSSTLayer(useInAverage, 0.7, size / 20, palette);
 
         /*
          * Create a new composite image with an SST layer and an ice layer
          */
         MapImage compositeImage = new MapImage();
         compositeImage.getLayers().add(latitudeDependentSST.getSSTLayer());
-        ColourScheme colourScheme = new SegmentColourScheme(new ColourScale(0f, 1.0f, false),
-                new Color(0, true), null, new Color(0, true), "#00ffffff,#ffffff", 100);
-        RasterLayer iceLayer = new RasterLayer(iceVar, colourScheme);
-        compositeImage.getLayers().add(iceLayer);
-
-        /*
-         * Generate the legend
-         */
-        BufferedImage legend = latitudeDependentSST.drawLegend(legendWidth, height);
-        if (legendPath != null) {
-            /*
-             * Write legend to disk if desired
-             */
-            try {
-                ImageIO.write(legend, "png", new File(legendPath));
-            } catch (IOException e) {
-                System.out
-                        .println("Problem writing legend to file.  Stack trace follows.  Not a critical error, continuing...");
-                e.printStackTrace();
-            }
-        }
+//        compositeImage.getLayers().add(latitudeDependentSST.getIceLayer());
 
         /*
          * Simple format for the date.
@@ -308,19 +262,14 @@ public class SSTRender {
         /*
          * Some constants
          */
-        final int gap = width / 100;
-        final int targetFontHeight = height / 15;
-        final int totalWidth = includeLegend ? width + legend.getWidth() + gap : width;
+        final int targetFontHeight = size / 15;
+
         /*
          * The frame number. Frames are numbered according to the position in
          * the dataset.
          */
         int frameNo = firstFrame;
         DecimalFormat frameNoFormat = new DecimalFormat("00000");
-        
-        HorizontalPosition testPos = new HorizontalPosition(-9036842, -9036842, GISUtils.getCrs("EPSG:3408"));
-        HorizontalPosition transformPosition = GISUtils.transformPosition(testPos, DefaultGeographicCRS.WGS84);
-        System.out.println(testPos+","+transformPosition);
         /*
          * Loop over all frames to generate images
          */
@@ -331,19 +280,20 @@ public class SSTRender {
              * Create an image to render the frame with space for the legend and
              * a gap
              */
-            BufferedImage frame = new BufferedImage(totalWidth, height, BufferedImage.TYPE_INT_ARGB);
+            BufferedImage frame = new BufferedImage(size * 2, size, BufferedImage.TYPE_INT_ARGB);
 
             /*
              * Create parameters to plot with
              */
-            imageGrid = new RegularGridImpl(-9036842, -9036842, 9036842, 9036842,
-                    GISUtils.getCrs("EPSG:3408"), width, height);
-            PlottingDomainParams params = new PlottingDomainParams(imageGrid, null, null, null,
+            PlottingDomainParams npParams = new PlottingDomainParams(npGrid, null, null, null,
+                    null, time);
+            PlottingDomainParams spParams = new PlottingDomainParams(spGrid, null, null, null,
                     null, time);
             /*
              * Render the image with SST and ice layers
              */
-            BufferedImage sstImage = compositeImage.drawImage(params, latitudeDependentSST);
+            BufferedImage npSstImage = compositeImage.drawImage(npParams, latitudeDependentSST);
+            BufferedImage spSstImage = compositeImage.drawImage(spParams, latitudeDependentSST);
 
             Graphics2D g = frame.createGraphics();
 
@@ -356,20 +306,16 @@ public class SSTRender {
             /*
              * Draw the blue marble background
              */
-            g.drawImage(background, 0, 0, width, height, null);
+            g.drawImage(npBackground, 0, 0, size, size, null);
+            g.drawImage(spBackground, size, 0, size, size, null);
             /*
              * Draw the SST / ice layer
              */
-            g.drawImage(sstImage, 0, 0, width, height, null);
-
-            if (includeLegend) {
-                /*
-                 * Draw the legend
-                 */
-                g.drawImage(legend, width + gap, 0, legend.getWidth(), legend.getHeight(), null);
-            }
+            g.drawImage(npSstImage, 0, 0, size, size, null);
+            g.drawImage(spSstImage, size, 0, size, size, null);
 
             if (includeDate) {
+                g.setColor(Color.white);
                 /*
                  * Calculate a font which should take up at most
                  * targetFontHeight vertically (but will be at least font size
@@ -386,11 +332,10 @@ public class SSTRender {
                 g.setFont(font);
 
                 /*
-                 * Draw the date/time on the map, somewhere in the antarctic
-                 * (position found empirically, but works well for a
-                 * targetFontHeight of height/15)
+                 * Draw the date/time on the map, centrally. Found empirically
+                 * but works
                  */
-                g.drawString(dateFormatter.print(time), (int) (width * 0.4), height - 10);
+                g.drawString(dateFormatter.print(time), (int) (size * 0.82), size - 10);
             }
 
             /*
@@ -403,7 +348,7 @@ public class SSTRender {
          * Add a helpful message of how to convert frames to an MP4 video.
          */
         System.out.println("Finished writing frames.  Now run:\nffmpeg -r 25 -i '" + outputPath
-                + "/frame-%05d.png' -c:v libx264 -pix_fmt yuv420p output.mp4");
+                + "/frame-%04d.png' -c:v libx264 -pix_fmt yuv420p output.mp4");
     }
 
 }
