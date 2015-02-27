@@ -276,9 +276,9 @@ public class SSTRender {
          */
         MapImage compositeImage = new MapImage();
         compositeImage.getLayers().add(latitudeDependentSST.getSSTLayer());
-        ColourScheme colourScheme = new SegmentColourScheme(new ColourScale(0f, 1.0f, false),
+        ColourScheme iceColourScheme = new SegmentColourScheme(new ColourScale(0f, 1.0f, false),
                 new Color(0, true), null, new Color(0, true), "#00ffffff,#ffffff", 100);
-        RasterLayer iceLayer = new RasterLayer(iceVar, colourScheme);
+        RasterLayer iceLayer = new RasterLayer(iceVar, iceColourScheme);
         compositeImage.getLayers().add(iceLayer);
 
         /*

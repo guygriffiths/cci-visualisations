@@ -37,6 +37,7 @@ import uk.ac.rdg.resc.edal.dataset.Dataset;
 import uk.ac.rdg.resc.edal.dataset.cdm.CdmGridDatasetFactory;
 import uk.ac.rdg.resc.edal.exceptions.DataReadingException;
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
+import uk.ac.rdg.resc.edal.exceptions.VariableNotFoundException;
 import uk.ac.rdg.resc.edal.feature.DiscreteFeature;
 import uk.ac.rdg.resc.edal.feature.MapFeature;
 import uk.ac.rdg.resc.edal.graphics.style.util.FeatureCatalogue;
@@ -66,7 +67,7 @@ public class SimpleFeatureCatalogue implements FeatureCatalogue {
     }
 
     private MapFeature getMapFeature(PlottingDomainParams params, String varId, boolean cache)
-            throws DataReadingException {
+            throws DataReadingException, VariableNotFoundException {
         CacheKey key = new CacheKey(params, varId);
         if (mapFeatures.containsKey(key)) {
             return mapFeatures.get(key);

@@ -12,7 +12,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <netbeans.hint.license>bsd-3clause</netbeans.hint.license>
-        <edal-version>1.0-rc1</edal-version>
+        <edal-version>1.0-SNAPSHOT</edal-version>
     </properties>
 
     <inceptionYear>2014</inceptionYear>

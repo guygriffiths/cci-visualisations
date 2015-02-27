@@ -28,56 +28,60 @@
 
 package uk.ac.rdg.resc.cci;
 
-import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.IOException;
-import java.text.DecimalFormat;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
-import java.util.Stack;
+import java.util.Map;
+import java.util.Map.Entry;
 
-import javax.imageio.ImageIO;
-
-import org.geotoolkit.referencing.crs.DefaultGeographicCRS;
 import org.opengis.referencing.crs.CoordinateReferenceSystem;
 
+import uk.ac.rdg.resc.edal.grid.GridCell2D;
 import uk.ac.rdg.resc.edal.grid.RegularAxis;
 import uk.ac.rdg.resc.edal.grid.RegularGrid;
 import uk.ac.rdg.resc.edal.grid.RegularGridImpl;
 import uk.ac.rdg.resc.edal.position.HorizontalPosition;
 import uk.ac.rdg.resc.edal.util.Array2D;
 import uk.ac.rdg.resc.edal.util.GISUtils;
+import uk.ac.rdg.resc.edal.util.GridCoordinates2D;
 
 public class EvolvingWindPlotter {
-    private static final double WEIGHT = 0.01;
+    private final double weight;
     private List<EvolvingWindLine> windLines = new ArrayList<>();
     private RegularGrid imageGrid;
+    private RegularGrid positionGrid;
 
-    public EvolvingWindPlotter(RegularGrid imageGrid) {
+    private Color baseColour;
+    private int length;
+
+    public EvolvingWindPlotter(RegularGrid imageGrid, double weight, int gridSpace,
+            Color baseColour, int length) {
         this.imageGrid = imageGrid;
-        /*
-         * Set up initial wind lines based on parameters here.
-         */
+        this.weight = weight;
+        this.positionGrid = new RegularGridImpl(imageGrid.getBoundingBox(), imageGrid.getXSize()
+                / gridSpace, imageGrid.getYSize() / gridSpace);
+
+        Iterator<GridCell2D> iterator = positionGrid.getDomainObjects().iterator();
+        while (iterator.hasNext()) {
+            windLines.add(new EvolvingWindLine(iterator.next().getCentre(), weight, length));
+        }
+
+        this.baseColour = baseColour;
+        this.length = length;
     }
 
     public void addWindLine(HorizontalPosition position) {
-        windLines.add(new EvolvingWindLine(position, WEIGHT));
+        windLines.add(new EvolvingWindLine(position, weight, length));
     }
 
     public BufferedImage plot() {
         BufferedImage image = new BufferedImage(imageGrid.getXSize(), imageGrid.getYSize(),
                 BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = image.createGraphics();
-
-        /*
-         * Take this out after testing...
-         */
-        g.setColor(Color.white);
-        g.fillRect(0, 0, image.getWidth(), image.getHeight());
 
         RegularAxis xAxis = imageGrid.getXAxis();
         RegularAxis yAxis = imageGrid.getYAxis();
@@ -111,9 +115,13 @@ public class EvolvingWindPlotter {
                      * Set the transparency based on proximity to the head of
                      * the line
                      */
-                    float alpha = ((float) (EvolvingWindLine.LENGTH - 1 - i))
-                            / (EvolvingWindLine.LENGTH - 1);
-                    Color c = new Color(0, 0, 0, alpha);
+                    float alpha = ((float) (line.length - 1 - i)) / (line.length - 1);
+                    /*
+                     * Using alpha^3 gives a nicer fadeout
+                     */
+                    alpha = 255 * (alpha * alpha * alpha * (baseColour.getAlpha() / 255f));
+                    Color c = new Color(baseColour.getRed(), baseColour.getGreen(),
+                            baseColour.getBlue(), (int) alpha);
                     g.setColor(c);
 
                     if (p2 == null) {
@@ -154,6 +162,13 @@ public class EvolvingWindPlotter {
     }
 
     public void evolve(Array2D<Number> xComps, Array2D<Number> yComps) {
+        Map<GridCoordinates2D, Integer> counts = new HashMap<>();
+        for (int i = 0; i < positionGrid.getXSize(); i++) {
+            for (int j = 0; j < positionGrid.getYSize(); j++) {
+                counts.put(new GridCoordinates2D(i, j), 0);
+            }
+        }
+
         for (EvolvingWindLine line : windLines) {
             if (line.expired) {
                 /* Doesn't matter how we evolve this, since it's expired */
@@ -173,6 +188,29 @@ public class EvolvingWindPlotter {
             Number xNumber = xComps.get(yIndex, xIndex);
             Number yNumber = yComps.get(yIndex, xIndex);
             line.evolve(xNumber.doubleValue(), yNumber.doubleValue());
+
+            int xDensityIndex = positionGrid.getXAxis().findIndexOf(position.getX());
+            int yDensityIndex = positionGrid.getYAxis().findIndexOf(position.getY());
+            GridCoordinates2D densityCoords = new GridCoordinates2D(xDensityIndex, yDensityIndex);
+            Integer count = counts.get(densityCoords);
+            if (count > 3) {
+                line.expired = true;
+            } else {
+                counts.put(densityCoords, count + 1);
+            }
+        }
+
+        for (Entry<GridCoordinates2D, Integer> entry : counts.entrySet()) {
+            if (entry.getValue() == 0) {
+                /*
+                 * Add a new wind line at the given position
+                 */
+                GridCoordinates2D coords = entry.getKey();
+                Double x = positionGrid.getXAxis().getCoordinateValue(coords.getX());
+                Double y = positionGrid.getYAxis().getCoordinateValue(coords.getY());
+                windLines.add(new EvolvingWindLine(new HorizontalPosition(x, y, positionGrid
+                        .getCoordinateReferenceSystem()), weight, length));
+            }
         }
 
         /*
@@ -183,8 +221,8 @@ public class EvolvingWindPlotter {
     }
 
     public static class EvolvingWindLine {
-        private static final int LENGTH = 20;
-        private FixedSizeStack<HorizontalPosition> positions = new FixedSizeStack<>(LENGTH);
+        private final int length;
+        private FixedSizeBuffer<HorizontalPosition> positions;
         /*
          * TODO Add a time component dependency
          */
@@ -193,10 +231,12 @@ public class EvolvingWindPlotter {
         private CoordinateReferenceSystem crs;
         private boolean expired = false;
 
-        public EvolvingWindLine(HorizontalPosition startPos, double weight) {
+        public EvolvingWindLine(HorizontalPosition startPos, double weight, int length) {
+            positions = new FixedSizeBuffer<>(length);
             positions.add(startPos);
             crs = startPos.getCoordinateReferenceSystem();
             this.weight = weight;
+            this.length = length;
         }
 
         public void evolve(double xComp, double yComp) {
@@ -219,69 +259,6 @@ public class EvolvingWindPlotter {
 
         public CoordinateReferenceSystem getCrs() {
             return crs;
-        }
-    }
-
-    private static class FixedSizeStack<E> extends ArrayList<E> {
-        private static final long serialVersionUID = 1L;
-        private final int length;
-
-        public FixedSizeStack(int length) {
-            this.length = length;
-            for (int i = 0; i < length; i++) {
-                add(null);
-            }
-        }
-
-        @Override
-        public boolean add(E e) {
-            super.add(0, e);
-            if (this.size() == length) {
-                this.remove(length - 1);
-            }
-            return true;
-        }
-    }
-
-    public static void main(String[] args) throws IOException {
-        EvolvingWindPlotter plotter = new EvolvingWindPlotter(new RegularGridImpl(-180, -90, 180,
-                90, DefaultGeographicCRS.WGS84, 1000, 500));
-        for (int x = -170; x <= 170; x += 10) {
-            for (int y = -80; y <= 80; y += 10) {
-                plotter.addWindLine(new HorizontalPosition(x, y, DefaultGeographicCRS.WGS84));
-            }
-        }
-        DecimalFormat frameNoFormat = new DecimalFormat("0000");
-        plotter.addWindLine(new HorizontalPosition(0, 0, DefaultGeographicCRS.WGS84));
-        for (int i = 0; i < 100; i++) {
-            final int ival = i;
-            BufferedImage plot = plotter.plot();
-            Array2D<Number> xComps = new Array2D<Number>(500, 1000) {
-                @Override
-                public Number get(int... coords) {
-                    return 500;
-                }
-
-                @Override
-                public void set(Number value, int... coords) {
-                    throw new UnsupportedOperationException();
-                }
-            };
-            Array2D<Number> yComps = new Array2D<Number>(500, 1000) {
-                @Override
-                public Number get(int... coords) {
-                    return 200;
-//                    return 200*Math.sin((double)ival/Math.PI);
-                }
-
-                @Override
-                public void set(Number value, int... coords) {
-                    throw new UnsupportedOperationException();
-                }
-            };
-            plotter.evolve(xComps, yComps);
-            ImageIO.write(plot, "png",
-                    new File("/home/guy/windtest/frame-" + frameNoFormat.format(i) + ".png"));
         }
     }
 }

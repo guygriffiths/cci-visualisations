@@ -50,7 +50,11 @@ import org.joda.time.format.DateTimeFormatterBuilder;
 import uk.ac.rdg.resc.edal.exceptions.BadTimeFormatException;
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
 import uk.ac.rdg.resc.edal.geometry.BoundingBoxImpl;
+import uk.ac.rdg.resc.edal.graphics.style.ColourScale;
+import uk.ac.rdg.resc.edal.graphics.style.ColourScheme;
 import uk.ac.rdg.resc.edal.graphics.style.MapImage;
+import uk.ac.rdg.resc.edal.graphics.style.RasterLayer;
+import uk.ac.rdg.resc.edal.graphics.style.SegmentColourScheme;
 import uk.ac.rdg.resc.edal.grid.RegularGrid;
 import uk.ac.rdg.resc.edal.grid.RegularGridImpl;
 import uk.ac.rdg.resc.edal.util.GISUtils;
@@ -86,7 +90,7 @@ public class SSTRenderPolar {
         String endStr = properties.getProperty("endData");
 
         String sstVar = properties.getProperty("sstVar", "analysed_sst");
-        String iceVar = properties.getProperty("iceVar", "sea_ice_fraction");
+        String iceVar = properties.getProperty("iceVar");
 
         String yearsStr = properties.getProperty("yearsInAverage", "");
         String monthsStr = properties.getProperty("monthsInAverage", "");
@@ -250,7 +254,12 @@ public class SSTRenderPolar {
          */
         MapImage compositeImage = new MapImage();
         compositeImage.getLayers().add(latitudeDependentSST.getSSTLayer());
-//        compositeImage.getLayers().add(latitudeDependentSST.getIceLayer());
+        if(iceVar != null) {
+            ColourScheme iceColourScheme = new SegmentColourScheme(new ColourScale(0f, 1.0f, false),
+                    new Color(0, true), null, new Color(0, true), "#00ffffff,#ffffff", 100);
+            RasterLayer iceLayer = new RasterLayer(iceVar, iceColourScheme);
+            compositeImage.getLayers().add(iceLayer);
+        }
 
         /*
          * Simple format for the date.
@@ -313,6 +322,7 @@ public class SSTRenderPolar {
              */
             g.drawImage(npSstImage, 0, 0, size, size, null);
             g.drawImage(spSstImage, size, 0, size, size, null);
+            g.drawImage(mask, 0, 0, size * 2, size, null);
 
             if (includeDate) {
                 g.setColor(Color.white);
