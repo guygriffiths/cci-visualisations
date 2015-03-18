@@ -28,6 +28,7 @@
 
 package uk.ac.rdg.resc.cci;
 
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
@@ -123,6 +124,7 @@ public class EvolvingWindPlotter {
                     Color c = new Color(baseColour.getRed(), baseColour.getGreen(),
                             baseColour.getBlue(), (int) alpha);
                     g.setColor(c);
+                    g.setStroke(new BasicStroke(2));
 
                     if (p2 == null) {
                         /*

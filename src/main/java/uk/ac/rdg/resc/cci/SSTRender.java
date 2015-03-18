@@ -57,7 +57,6 @@ import uk.ac.rdg.resc.edal.graphics.style.RasterLayer;
 import uk.ac.rdg.resc.edal.graphics.style.SegmentColourScheme;
 import uk.ac.rdg.resc.edal.grid.RegularGrid;
 import uk.ac.rdg.resc.edal.grid.RegularGridImpl;
-import uk.ac.rdg.resc.edal.position.HorizontalPosition;
 import uk.ac.rdg.resc.edal.util.GISUtils;
 import uk.ac.rdg.resc.edal.util.PlottingDomainParams;
 import uk.ac.rdg.resc.edal.util.TimeUtils;
@@ -318,9 +317,6 @@ public class SSTRender {
         int frameNo = firstFrame;
         DecimalFormat frameNoFormat = new DecimalFormat("00000");
         
-        HorizontalPosition testPos = new HorizontalPosition(-9036842, -9036842, GISUtils.getCrs("EPSG:3408"));
-        HorizontalPosition transformPosition = GISUtils.transformPosition(testPos, DefaultGeographicCRS.WGS84);
-        System.out.println(testPos+","+transformPosition);
         /*
          * Loop over all frames to generate images
          */
