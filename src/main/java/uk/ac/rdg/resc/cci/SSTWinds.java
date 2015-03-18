@@ -35,6 +35,7 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.text.DecimalFormat;
+import java.util.List;
 
 import javax.imageio.ImageIO;
 
@@ -43,6 +44,7 @@ import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.DateTimeFormatterBuilder;
 
+import uk.ac.rdg.resc.cci.IBTracsReader.PosAndName;
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
 import uk.ac.rdg.resc.edal.exceptions.VariableNotFoundException;
 import uk.ac.rdg.resc.edal.feature.MapFeature;
@@ -58,6 +60,7 @@ import uk.ac.rdg.resc.edal.grid.RegularGridImpl;
 import uk.ac.rdg.resc.edal.grid.TimeAxis;
 import uk.ac.rdg.resc.edal.util.Array2D;
 import uk.ac.rdg.resc.edal.util.GISUtils;
+import uk.ac.rdg.resc.edal.util.GridCoordinates2D;
 import uk.ac.rdg.resc.edal.util.PlottingDomainParams;
 
 public class SSTWinds {
@@ -66,7 +69,7 @@ public class SSTWinds {
     private static final String WIND_Y_VAR = "V10";
     private static final int WIDTH = 1920;
     private static final int HEIGHT = 960;
-    
+
     public static void main(String[] args) throws IOException, EdalException {
 
         BufferedImage background = ImageIO.read(SSTWinds.class.getResource("/bluemarble_bg.png"));
@@ -80,12 +83,11 @@ public class SSTWinds {
                 "/home/guy/Data/era_interim/V10.erai.19812013.nc", false);
         TimeAxis timeAxis = (TimeAxis) xWind.getDataset().getVariableMetadata(WIND_X_VAR)
                 .getTemporalDomain();
-        
-//        IBTracsReader ibtracs = new IBTracsReader(
-//                "/home/guy/Data/storm_tracks/Allstorms.ibtracs_all.v03r06.nc", new DateTime(1991,
-//                        1, 1, 0, 0), new DateTime(2010, 12, 31, 23,
-//                        59));
-        
+
+        IBTracsReader ibtracs = new IBTracsReader(
+                "/home/guy/Data/storm_tracks/Allstorms.ibtracs_all.v03r06.nc", new DateTime(1992,
+                        1, 1, 0, 0), new DateTime(2010, 12, 31, 23, 59));
+
         MapImage compositeImage = new MapImage();
         RegularGrid imageGrid = new RegularGridImpl(new BoundingBoxImpl(-110, -7.5, -5, 45,
                 DefaultGeographicCRS.WGS84), WIDTH, HEIGHT);
@@ -113,12 +115,12 @@ public class SSTWinds {
                     throws EdalException {
                 if (SST_VAR.equals(id)) {
                     return cciSst.getFeaturesForLayer(id, params);
-                } else if(WIND_X_VAR.equals(id)){
+                } else if (WIND_X_VAR.equals(id)) {
                     return xWind.getFeaturesForLayer(id, params);
-                } else if(WIND_Y_VAR.equals(id)){
+                } else if (WIND_Y_VAR.equals(id)) {
                     return yWind.getFeaturesForLayer(id, params);
                 }
-                throw new VariableNotFoundException(id+" not in this catalogue");
+                throw new VariableNotFoundException(id + " not in this catalogue");
             }
         };
 
@@ -132,11 +134,10 @@ public class SSTWinds {
                 .toFormatter();
         Font font = null;
 
-
         for (int year = 1992; year <= 2010; year++) {
-            String yearOutPath = outputPath+"/"+year;
+            String yearOutPath = outputPath + "/" + year;
             File dir = new File(yearOutPath);
-            if(!dir.exists()) {
+            if (!dir.exists()) {
                 dir.mkdirs();
             }
             int startTimeIndex = GISUtils.getIndexOfClosestTimeTo(new DateTime(year, 6, 1, 0, 0),
@@ -144,16 +145,16 @@ public class SSTWinds {
             int endTimeIndex = GISUtils.getIndexOfClosestTimeTo(new DateTime(year, 12, 1, 0, 0),
                     timeAxis);
             int frameNo = 0;
-            RunningAverageDiffFeatureCatalogue diffFc = new RunningAverageDiffFeatureCatalogue(SST_VAR,
-                    10, featureCatalogue, (TimeAxis) cciSst.getDataset().getVariableMetadata(SST_VAR)
-                            .getTemporalDomain());
-            EvolvingWindPlotter windPlotter = new EvolvingWindPlotter(imageGrid, 0.05, 24, new Color(
-                    0f, 0f, 0f, 0.3f), 20);
-            
+            RunningAverageDiffFeatureCatalogue diffFc = new RunningAverageDiffFeatureCatalogue(
+                    SST_VAR, 10, featureCatalogue, (TimeAxis) cciSst.getDataset()
+                            .getVariableMetadata(SST_VAR).getTemporalDomain());
+            EvolvingWindPlotter windPlotter = new EvolvingWindPlotter(imageGrid, 0.05, 24,
+                    new Color(0f, 0f, 0f, 0.3f), 20);
+
             for (int i = startTimeIndex; i < endTimeIndex; i++) {
                 DateTime time = timeAxis.getCoordinateValue(i);
                 System.out.println("Generating frame for " + time);
-                
+
                 PlottingDomainParams params = new PlottingDomainParams(imageGrid, null, null, null,
                         null, time);
 
@@ -169,8 +170,7 @@ public class SSTWinds {
                 BufferedImage sst = compositeImage.drawImage(params, diffFc);
                 BufferedImage winds = windPlotter.plot();
                 Graphics2D g = frame.createGraphics();
-                
-                
+
                 if (font == null) {
                     /*
                      * Calculate a font which should take up at most
@@ -194,7 +194,7 @@ public class SSTWinds {
                 g.drawImage(backgroundSub, 0, 0, WIDTH, HEIGHT, null);
                 g.setColor(new Color(1.0f, 1.0f, 1.0f, 0.5f));
                 g.fillRect(0, 0, WIDTH, HEIGHT);
-                
+
                 /*
                  * Draw date
                  */
@@ -202,29 +202,31 @@ public class SSTWinds {
                 g.drawString(dateFormatter.print(time), WIDTH / 40, font.getSize() + HEIGHT / 20);
 
                 /*
-                 * Label storms
-                 */
-//                g.setColor(Color.black);
-//                g.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 16));
-//                List<PosAndName> stormPositionsForTime = ibtracs.getStormPositionsForTime(time);
-//                for(PosAndName posName : stormPositionsForTime) {
-//                    GridCoordinates2D stormCentre = imageGrid.findIndexOf(posName.getPos());
-//                    if(stormCentre != null) {
-//                        int yPos = HEIGHT - 1 - stormCentre.getY();
-//                        g.fillOval(stormCentre.getX(), yPos, 10, 10);
-//                        g.drawString(posName.getName(), stormCentre.getX()+10, yPos);
-//                    }
-//                }
-                /*
                  * Draw data layers
                  */
                 g.drawImage(sst, 0, 0, null);
                 g.drawImage(winds, 0, 0, null);
+
+                /*
+                 * Label storms
+                 */
+                g.setColor(Color.black);
+                g.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 16));
+                List<PosAndName> stormPositionsForTime = ibtracs.getStormPositionsForTime(time);
+                for (PosAndName posName : stormPositionsForTime) {
+                    GridCoordinates2D stormCentre = imageGrid.findIndexOf(posName.getPos());
+                    if (stormCentre != null) {
+                        int yPos = HEIGHT - 1 - stormCentre.getY();
+                        g.fillOval(stormCentre.getX(), yPos, 10, 10);
+                        g.drawString(posName.getName(), stormCentre.getX() + 10, yPos);
+                    }
+                }
                 ImageIO.write(frame, "png",
                         new File(yearOutPath + "/frame-" + frameNoFormat.format(frameNo++) + ".png"));
             }
 
-            System.out.println("Finished writing frames.  Now run:\nffmpeg -r 25 -i '" + yearOutPath
+            System.out.println("Finished writing frames.  Now run:\nffmpeg -r 25 -i '"
+                    + yearOutPath
                     + "/frame-%04d.png' -crf 18 -c:v libx264 -pix_fmt yuv420p output.mp4");
         }
     }
