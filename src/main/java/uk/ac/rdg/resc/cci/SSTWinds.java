@@ -134,6 +134,9 @@ public class SSTWinds {
                 .toFormatter();
         Font font = null;
 
+//        int[] years = new int[]{2005};
+//        int[] years = new int[]{1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2007, 2008, 2009, 2010};
+//        for (int year : years) {
         for (int year = 1992; year <= 2010; year++) {
             String yearOutPath = outputPath + "/" + year;
             File dir = new File(yearOutPath);
@@ -210,15 +213,22 @@ public class SSTWinds {
                 /*
                  * Label storms
                  */
-                g.setColor(Color.black);
-                g.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 16));
+                g.setFont(new Font(Font.MONOSPACED, Font.BOLD, 26));
                 List<PosAndName> stormPositionsForTime = ibtracs.getStormPositionsForTime(time);
                 for (PosAndName posName : stormPositionsForTime) {
                     GridCoordinates2D stormCentre = imageGrid.findIndexOf(posName.getPos());
                     if (stormCentre != null) {
+                        int xPos = stormCentre.getX();
                         int yPos = HEIGHT - 1 - stormCentre.getY();
-                        g.fillOval(stormCentre.getX(), yPos, 10, 10);
-                        g.drawString(posName.getName(), stormCentre.getX() + 10, yPos);
+                        g.setColor(Color.white);
+                        g.drawString(posName.getName(), xPos + 9, yPos + 1);
+                        g.drawString(posName.getName(), xPos + 9, yPos - 1);
+                        g.drawString(posName.getName(), xPos + 11, yPos + 1);
+                        g.drawString(posName.getName(), xPos + 11, yPos - 1);
+                        g.fillOval(xPos-6, yPos-6, 12, 12);
+                        g.setColor(Color.black);
+                        g.drawString(posName.getName(), xPos + 10, yPos);
+                        g.fillOval(xPos-5, yPos-5, 10, 10);
                     }
                 }
                 ImageIO.write(frame, "png",
