@@ -66,12 +66,14 @@ public class IBTracsReader {
     private Variable nameVar;
     private Variable latVar;
     private Variable lonVar;
+    private Variable typeVar;
 
     public IBTracsReader(String location, DateTime startTime, DateTime endTime) throws IOException {
         NetcdfDataset dataset = CdmUtils.openDataset(location);
         nameVar = dataset.findVariable(NAME_VAR);
         latVar = dataset.findVariable(LAT_VAR);
         lonVar = dataset.findVariable(LON_VAR);
+        typeVar = dataset.findVariable("nature_for_mapping");
         Variable timeVar = dataset.findVariable(TIME_VAR);
         String units = timeVar.findAttribute("units").getStringValue();
         String[] timeUnitsParts = units.split(" since ");
@@ -168,6 +170,12 @@ public class IBTracsReader {
                 latIndex.set1(timeIndex);
                 double latDouble = lat.getDouble(latIndex);
 
+                Array type = typeVar.read();
+                Index typeIndex = type.getIndex();
+                typeIndex.set0(stormIndex);
+                typeIndex.set1(timeIndex);
+                byte typeB = type.getByte(typeIndex);
+                
                 Array name = nameVar.read();
                 StringBuilder nameStr = new StringBuilder();
                 for (int i = 0; i < 57; i++) {
@@ -178,7 +186,7 @@ public class IBTracsReader {
                 }
                 PosAndName posAndName = new PosAndName(new HorizontalPosition(lonDouble, latDouble,
                         DefaultGeographicCRS.WGS84), nameStr.toString());
-                if(!posAndName.name.equalsIgnoreCase("Not named")) {
+                if(!posAndName.name.equalsIgnoreCase("Not named") && typeB == 0) {
                     ret.add(posAndName);
                 }
             }
