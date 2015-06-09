@@ -130,7 +130,7 @@ public class SSTRenderPolar {
                 GISUtils.getCrs("EPSG:3408"), size, size);
         RegularGridImpl spGrid = new RegularGridImpl(-9000000, -9000000, 9000000, 9000000,
                 GISUtils.getCrs("EPSG:3409"), size, size);
-
+        
         /*
          * Using the time axis of the dataset, select the indices we want to
          * generate images to/from

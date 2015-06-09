@@ -169,8 +169,11 @@ public class LatitudeDependentSST implements FeatureCatalogue {
          * miss the maximum scale range. This routine generally only gets called
          * once anyway
          */
-        for (int y = latitudeAxis.size() - 1; y > latitudeAxis.size() / 2; y--) {
-            means[latitudeAxis.size() - 1 - y] = means[y];
+        if (latitudeAxis.getCoordinateExtent().getLow()
+                .equals(-latitudeAxis.getCoordinateExtent().getHigh())) {
+            for (int y = latitudeAxis.size() - 1; y > latitudeAxis.size() / 2; y--) {
+                means[latitudeAxis.size() - 1 - y] = means[y];
+            }
         }
         /*
          * Replace the mean values with a mean over the given span. This smooths
@@ -302,8 +305,7 @@ public class LatitudeDependentSST implements FeatureCatalogue {
                                         DefaultGeographicCRS.WGS84);
 
                                 RegularAxis latitudeAxis = averagingGrid.getYAxis();
-                                int latIndex = latitudeAxis
-                                        .findIndexOf(llPos.getY());
+                                int latIndex = latitudeAxis.findIndexOf(llPos.getY());
                                 return latitudeAxis.getCoordinateValue(latIndex);
                             }
 
@@ -312,9 +314,9 @@ public class LatitudeDependentSST implements FeatureCatalogue {
                                 throw new UnsupportedOperationException();
                             }
                         });
-                latitudeFeature = new FeaturesAndMemberName(new MapFeature(LATITUDE, "Temperature_height_above_ground", "",
-                        new MapDomainImpl(imageGrid, null, null, params.getTargetT()), null,
-                        latitudeValuesMap), LATITUDE);
+                latitudeFeature = new FeaturesAndMemberName(new MapFeature(LATITUDE,
+                        "Temperature_height_above_ground", "", new MapDomainImpl(imageGrid, null,
+                                null, params.getTargetT()), null, latitudeValuesMap), LATITUDE);
             }
             return latitudeFeature;
         } else {

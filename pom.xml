@@ -49,8 +49,8 @@
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
+                    <source>1.7</source>
+                    <target>1.7</target>
                 </configuration>
                 <version>3.1</version>
             </plugin>
@@ -83,7 +83,7 @@
                     <archive>
                         <manifest>
                             <addClasspath>true</addClasspath>
-                            <mainClass>uk.ac.rdg.resc.cci.LatitudeDependentSST</mainClass>
+                            <mainClass>uk.ac.rdg.resc.cci.SSTRenderPolar</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

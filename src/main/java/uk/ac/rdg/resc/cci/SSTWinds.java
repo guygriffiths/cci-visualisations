@@ -63,6 +63,11 @@ import uk.ac.rdg.resc.edal.util.GISUtils;
 import uk.ac.rdg.resc.edal.util.GridCoordinates2D;
 import uk.ac.rdg.resc.edal.util.PlottingDomainParams;
 
+/**
+ * Program to generate images which visualise wind, hurricane labels, and SST anomalies
+ *
+ * @author Guy Griffiths
+ */
 public class SSTWinds {
     static final String SST_VAR = "analysed_sst";
     private static final String WIND_X_VAR = "U10";

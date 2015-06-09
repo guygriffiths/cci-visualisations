@@ -48,6 +48,7 @@ import org.joda.time.chrono.ISOChronology;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.DateTimeFormatterBuilder;
 
+import uk.ac.rdg.resc.edal.domain.Extent;
 import uk.ac.rdg.resc.edal.exceptions.BadTimeFormatException;
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
 import uk.ac.rdg.resc.edal.graphics.style.ColourScale;
@@ -125,8 +126,10 @@ public class SSTRender {
             }
         }
 
-        RegularGrid imageGrid = new RegularGridImpl(-180, -90, 180, 90, DefaultGeographicCRS.WGS84,
+        RegularGrid imageGrid = new RegularGridImpl(80, -56.25, 280, 56.25, DefaultGeographicCRS.WGS84,
                 width, height);
+//        RegularGrid imageGrid = new RegularGridImpl(110, -45, 200, 0, DefaultGeographicCRS.WGS84,
+//                width, height);
 
         /*
          * Do we want a legend on the frames?
@@ -261,14 +264,32 @@ public class SSTRender {
         /*
          * Read the background blue marble image
          */
-        BufferedImage background = ImageIO.read(SSTRender.class.getResource("/bluemarble_bg.png"));
+        BufferedImage bluemarble = ImageIO.read(SSTRender.class.getResource("/bluemarble_bg.png"));
+        /*
+         * Tile the background image twice horizontally in case we want to span
+         * dateline
+         */
+        BufferedImage background = new BufferedImage(bluemarble.getWidth() * 2,
+                bluemarble.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        background.createGraphics().drawImage(bluemarble, 0, 0, null);
+        background.createGraphics().drawImage(bluemarble, bluemarble.getWidth(), 0, null);
+        /*
+         * Now choose a subimage which corresponds to the plotted area
+         */
+        Extent<Double> xExtent = imageGrid.getXAxis().getCoordinateExtent();
+        Extent<Double> yExtent = imageGrid.getYAxis().getCoordinateExtent();
+        int regionWidthPx = (int) (bluemarble.getWidth() * (xExtent.getHigh() - xExtent.getLow())/360.0);
+        int regionHeightPx = (int) (bluemarble.getHeight() * (yExtent.getHigh() - yExtent.getLow())/180.0);
+        int regionXOffset = (int) ((xExtent.getLow() + 180.0) * bluemarble.getWidth() / 360.0);
+        int regionYOffset = (int) ((90.0 - yExtent.getHigh()) * bluemarble.getHeight() / 180.0);
+        background = background.getSubimage(regionXOffset, regionYOffset, regionWidthPx, regionHeightPx);
 
         /*
          * Generate the 2D latitude-dependent raster image layer (just
          * calculates the average and generates the layer, doesn't plot the
          * data)
          */
-        latitudeDependentSST.generateSSTLayer(useInAverage, 0.7, height / 20, palette);
+        latitudeDependentSST.generateSSTLayer(useInAverage, 1.0, 1, palette);
 
         /*
          * Create a new composite image with an SST layer and an ice layer
@@ -316,7 +337,7 @@ public class SSTRender {
          */
         int frameNo = firstFrame;
         DecimalFormat frameNoFormat = new DecimalFormat("00000");
-        
+
         /*
          * Loop over all frames to generate images
          */
@@ -332,8 +353,6 @@ public class SSTRender {
             /*
              * Create parameters to plot with
              */
-            imageGrid = new RegularGridImpl(-9036842, -9036842, 9036842, 9036842,
-                    GISUtils.getCrs("EPSG:3408"), width, height);
             PlottingDomainParams params = new PlottingDomainParams(imageGrid, null, null, null,
                     null, time);
             /*
@@ -398,7 +417,7 @@ public class SSTRender {
         /*
          * Add a helpful message of how to convert frames to an MP4 video.
          */
-        System.out.println("Finished writing frames.  Now run:\nffmpeg -r 25 -i '" + outputPath
+        System.out.println("Finished writing frames.  Now run:\nffmpeg -r 25 -start_number "+firstFrame+" -i '" + outputPath
                 + "/frame-%05d.png' -c:v libx264 -pix_fmt yuv420p output.mp4");
     }
 

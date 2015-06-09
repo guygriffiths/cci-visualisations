@@ -32,44 +32,28 @@ import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
-import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 
 import javax.imageio.ImageIO;
 
-import org.geotoolkit.referencing.crs.DefaultGeographicCRS;
 import org.joda.time.DateTime;
 
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
-import uk.ac.rdg.resc.edal.feature.Feature;
-import uk.ac.rdg.resc.edal.feature.MapFeature;
 import uk.ac.rdg.resc.edal.geometry.BoundingBoxImpl;
 import uk.ac.rdg.resc.edal.graphics.style.ColourScale;
-import uk.ac.rdg.resc.edal.graphics.style.ColourScheme2D;
-import uk.ac.rdg.resc.edal.graphics.style.ColouredGlyphLayer;
-import uk.ac.rdg.resc.edal.graphics.style.ContourLayer;
-import uk.ac.rdg.resc.edal.graphics.style.DensityMap;
 import uk.ac.rdg.resc.edal.graphics.style.MapImage;
-import uk.ac.rdg.resc.edal.graphics.style.Raster2DLayer;
 import uk.ac.rdg.resc.edal.graphics.style.RasterLayer;
 import uk.ac.rdg.resc.edal.graphics.style.SegmentColourScheme;
-import uk.ac.rdg.resc.edal.graphics.style.SegmentDensityMap;
-import uk.ac.rdg.resc.edal.graphics.style.StippleLayer;
-import uk.ac.rdg.resc.edal.graphics.style.ThresholdColourScheme2D;
-import uk.ac.rdg.resc.edal.graphics.style.ContourLayer.ContourLineStyle;
 import uk.ac.rdg.resc.edal.graphics.style.sld.SLDException;
-import uk.ac.rdg.resc.edal.graphics.style.sld.SLDRange;
-import uk.ac.rdg.resc.edal.graphics.style.sld.SLDRange.Spacing;
-import uk.ac.rdg.resc.edal.graphics.style.util.FeatureCatalogue;
-import uk.ac.rdg.resc.edal.graphics.style.util.FeatureCatalogue.FeaturesAndMemberName;
 import uk.ac.rdg.resc.edal.grid.RegularGrid;
 import uk.ac.rdg.resc.edal.grid.RegularGridImpl;
 import uk.ac.rdg.resc.edal.grid.TimeAxis;
-import uk.ac.rdg.resc.edal.util.Array2D;
 import uk.ac.rdg.resc.edal.util.PlottingDomainParams;
 
+/**
+ * Program to illustrate various ways of visualising uncertainty 
+ *
+ * @author Guy Griffiths
+ */
 public class SSTErrors {
     static final String SST_VAR = "analysed_sst";
     static final String SST_ERROR_VAR = "analysis_error";
