@@ -47,6 +47,8 @@ import org.joda.time.DateTime;
 import org.joda.time.chrono.ISOChronology;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.DateTimeFormatterBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import uk.ac.rdg.resc.edal.domain.Extent;
 import uk.ac.rdg.resc.edal.exceptions.BadTimeFormatException;
@@ -68,6 +70,8 @@ import uk.ac.rdg.resc.edal.util.TimeUtils;
  * animation
  */
 public class SSTRender {
+    private static final Logger log = LoggerFactory.getLogger(SSTRender.class);
+
     public static void main(String[] args) throws IOException, EdalException {
         /*
          * Load a properties file to determine what to plot.
@@ -83,8 +87,7 @@ public class SSTRender {
         String dataPath = properties.getProperty("dataPath");
 
         if (outputPath == null || dataPath == null) {
-            System.out
-                    .println("You must provide at least the output path and the path to the SST data");
+            log.error("You must provide at least the output path and the path to the SST data");
             System.exit(1);
         }
 
@@ -96,11 +99,17 @@ public class SSTRender {
         String legendWidthStr = properties.getProperty("legendWidth");
         String includeDateStr = properties.getProperty("includeDate");
 
+        String latMinStr = properties.getProperty("latMin");
+        String latMaxStr = properties.getProperty("latMax");
+        String lonMinStr = properties.getProperty("lonMin");
+        String lonMaxStr = properties.getProperty("lonMax");
+
         String startStr = properties.getProperty("startData");
         String endStr = properties.getProperty("endData");
 
         String sstVar = properties.getProperty("sstVar", "analysed_sst");
         String iceVar = properties.getProperty("iceVar", "sea_ice_fraction");
+        String icePlotStr = properties.getProperty("includeIce");
 
         String yearsStr = properties.getProperty("yearsInAverage", "");
         String monthsStr = properties.getProperty("monthsInAverage", "");
@@ -126,10 +135,54 @@ public class SSTRender {
             }
         }
 
-        RegularGrid imageGrid = new RegularGridImpl(80, -56.25, 280, 56.25, DefaultGeographicCRS.WGS84,
-                width, height);
-//        RegularGrid imageGrid = new RegularGridImpl(110, -45, 200, 0, DefaultGeographicCRS.WGS84,
-//                width, height);
+        double latMin = -90;
+        double latMax = 90;
+        double lonMin = -180;
+        double lonMax = 180;
+        if (latMinStr != null) {
+            try {
+                latMin = Double.parseDouble(latMinStr);
+            } catch (NumberFormatException e) {
+                /* Ignore - use default value if property isn't an integer */
+            }
+        }
+        if (latMaxStr != null) {
+            try {
+                latMax = Double.parseDouble(latMaxStr);
+            } catch (NumberFormatException e) {
+                /* Ignore - use default value if property isn't an integer */
+            }
+        }
+        if (lonMinStr != null) {
+            try {
+                lonMin = Double.parseDouble(lonMinStr);
+            } catch (NumberFormatException e) {
+                /* Ignore - use default value if property isn't an integer */
+            }
+        }
+        if (lonMaxStr != null) {
+            try {
+                lonMax = Double.parseDouble(lonMaxStr);
+            } catch (NumberFormatException e) {
+                /* Ignore - use default value if property isn't an integer */
+            }
+        }
+
+        /*
+         * If the width / height / bbox means that the output image will be
+         * distorted in the EPSG:4326 sense (i.e. lat / lon degrees are
+         * different sizes) then output a warning
+         */
+        double llRatio = (lonMax - lonMin) / (latMax - latMin);
+        double whRatio = (double) width / height;
+        if (Math.abs(llRatio - whRatio) > 0.001) {
+            log.warn("The ratio of width:height is " + whRatio
+                    + " and the ratio of longitude bounds:latitide bounds is " + llRatio
+                    + ".  You may not want this...");
+        }
+
+        RegularGrid imageGrid = new RegularGridImpl(lonMin, latMin, lonMax, latMax,
+                DefaultGeographicCRS.WGS84, width, height);
 
         /*
          * Do we want a legend on the frames?
@@ -211,6 +264,11 @@ public class SSTRender {
             }
         }
 
+        boolean includeIce = true;
+        if (icePlotStr != null) {
+            includeIce = Boolean.parseBoolean(icePlotStr);
+        }
+
         String[] yearsStrs = yearsStr.split(",");
         String[] monthsStrs = monthsStr.split(",");
         String[] daysStrs = daysStr.split(",");
@@ -278,11 +336,12 @@ public class SSTRender {
          */
         Extent<Double> xExtent = imageGrid.getXAxis().getCoordinateExtent();
         Extent<Double> yExtent = imageGrid.getYAxis().getCoordinateExtent();
-        int regionWidthPx = (int) (bluemarble.getWidth() * (xExtent.getHigh() - xExtent.getLow())/360.0);
-        int regionHeightPx = (int) (bluemarble.getHeight() * (yExtent.getHigh() - yExtent.getLow())/180.0);
+        int regionWidthPx = (int) (bluemarble.getWidth() * (xExtent.getHigh() - xExtent.getLow()) / 360.0);
+        int regionHeightPx = (int) (bluemarble.getHeight() * (yExtent.getHigh() - yExtent.getLow()) / 180.0);
         int regionXOffset = (int) ((xExtent.getLow() + 180.0) * bluemarble.getWidth() / 360.0);
         int regionYOffset = (int) ((90.0 - yExtent.getHigh()) * bluemarble.getHeight() / 180.0);
-        background = background.getSubimage(regionXOffset, regionYOffset, regionWidthPx, regionHeightPx);
+        background = background.getSubimage(regionXOffset, regionYOffset, regionWidthPx,
+                regionHeightPx);
 
         /*
          * Generate the 2D latitude-dependent raster image layer (just
@@ -296,10 +355,13 @@ public class SSTRender {
          */
         MapImage compositeImage = new MapImage();
         compositeImage.getLayers().add(latitudeDependentSST.getSSTLayer());
-        ColourScheme iceColourScheme = new SegmentColourScheme(new ColourScale(0f, 1.0f, false),
-                new Color(0, true), null, new Color(0, true), "#00ffffff,#ffffff", 100);
-        RasterLayer iceLayer = new RasterLayer(iceVar, iceColourScheme);
-        compositeImage.getLayers().add(iceLayer);
+        if (includeIce) {
+            ColourScheme iceColourScheme = new SegmentColourScheme(
+                    new ColourScale(0f, 1.0f, false), new Color(0, true), null, new Color(0, true),
+                    "#00ffffff,#ffffff", 100);
+            RasterLayer iceLayer = new RasterLayer(iceVar, iceColourScheme);
+            compositeImage.getLayers().add(iceLayer);
+        }
 
         /*
          * Generate the legend
@@ -312,8 +374,9 @@ public class SSTRender {
             try {
                 ImageIO.write(legend, "png", new File(legendPath));
             } catch (IOException e) {
-                System.out
-                        .println("Problem writing legend to file.  Stack trace follows.  Not a critical error, continuing...");
+                log.error(
+                        "Problem writing legend to file.  Stack trace follows.  Not a critical error, continuing...",
+                        e);
                 e.printStackTrace();
             }
         }
@@ -343,7 +406,7 @@ public class SSTRender {
          */
         for (DateTime time : latitudeDependentSST.getTimeAxis().getCoordinateValues()
                 .subList(firstFrame, lastFrame + 1)) {
-            System.out.println("Generating frame for time " + time);
+            log.info("Generating frame for time " + time);
             /*
              * Create an image to render the frame with space for the legend and
              * a gap
@@ -417,7 +480,8 @@ public class SSTRender {
         /*
          * Add a helpful message of how to convert frames to an MP4 video.
          */
-        System.out.println("Finished writing frames.  Now run:\nffmpeg -r 25 -start_number "+firstFrame+" -i '" + outputPath
+        log.info("Finished writing frames.  Now run:\nffmpeg -r 25 -start_number " + firstFrame
+                + " -i '" + outputPath
                 + "/frame-%05d.png' -c:v libx264 -pix_fmt yuv420p output.mp4");
     }
 
