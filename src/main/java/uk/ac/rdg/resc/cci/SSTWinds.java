@@ -49,7 +49,7 @@ import uk.ac.rdg.resc.edal.exceptions.EdalException;
 import uk.ac.rdg.resc.edal.exceptions.VariableNotFoundException;
 import uk.ac.rdg.resc.edal.feature.MapFeature;
 import uk.ac.rdg.resc.edal.geometry.BoundingBoxImpl;
-import uk.ac.rdg.resc.edal.graphics.style.ColourScale;
+import uk.ac.rdg.resc.edal.graphics.style.ScaleRange;
 import uk.ac.rdg.resc.edal.graphics.style.MapImage;
 import uk.ac.rdg.resc.edal.graphics.style.RasterLayer;
 import uk.ac.rdg.resc.edal.graphics.style.SegmentColourScheme;
@@ -111,7 +111,7 @@ public class SSTWinds {
                 bgSubImageWidth, bgSubImageHeight);
 
         RasterLayer sstDiffLayer = new RasterLayer(SST_VAR, new SegmentColourScheme(
-                new ColourScale(-3f, 3f, false), null, null, new Color(0, true), "div-BuRd2", 250));
+                new ScaleRange(-3f, 3f, false), null, null, new Color(0, true), "div-BuRd2", 250));
         compositeImage.getLayers().add(sstDiffLayer);
 
         FeatureCatalogue featureCatalogue = new FeatureCatalogue() {

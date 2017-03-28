@@ -47,7 +47,7 @@ import uk.ac.rdg.resc.edal.exceptions.EdalException;
 import uk.ac.rdg.resc.edal.exceptions.VariableNotFoundException;
 import uk.ac.rdg.resc.edal.feature.DiscreteFeature;
 import uk.ac.rdg.resc.edal.feature.MapFeature;
-import uk.ac.rdg.resc.edal.graphics.style.ColourScale;
+import uk.ac.rdg.resc.edal.graphics.style.ScaleRange;
 import uk.ac.rdg.resc.edal.graphics.style.ColourScheme2D;
 import uk.ac.rdg.resc.edal.graphics.style.ContourLayer;
 import uk.ac.rdg.resc.edal.graphics.style.ContourLayer.ContourLineStyle;
@@ -206,7 +206,7 @@ public class LatitudeDependentSST implements FeatureCatalogue {
         SegmentColourScheme[] schemes = new SegmentColourScheme[latitudeAxis.size()];
         for (int y = 0; y < latitudeAxis.size(); y++) {
             float mean = means[y];
-            SegmentColourScheme colourScheme = new SegmentColourScheme(new ColourScale(mean
+            SegmentColourScheme colourScheme = new SegmentColourScheme(new ScaleRange(mean
                     - scaleRange / 2, mean + scaleRange / 2, false), null, null,
                     new Color(0, true), palette, 250);
             schemes[y] = colourScheme;
@@ -354,7 +354,7 @@ public class LatitudeDependentSST implements FeatureCatalogue {
 
         MapImage contoursRaster = new MapImage();
         contoursRaster.getLayers().add(sstLayer);
-        ContourLayer contours = new ContourLayer(sstVar, new ColourScale(250f, 320f, false), false,
+        ContourLayer contours = new ContourLayer(sstVar, new ScaleRange(250f, 320f, false), false,
                 14, Color.darkGray, 1, ContourLineStyle.SOLID, true);
         contoursRaster.getLayers().add(contours);
 

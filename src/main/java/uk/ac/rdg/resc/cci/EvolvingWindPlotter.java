@@ -215,11 +215,6 @@ public class EvolvingWindPlotter {
             }
         }
 
-        /*
-         * Now we need to iterate over the image grid calculating the density
-         * per grid square, adding new lines when it's too low and expiring
-         * lines when it's too high...
-         */
     }
 
     public static class EvolvingWindLine {

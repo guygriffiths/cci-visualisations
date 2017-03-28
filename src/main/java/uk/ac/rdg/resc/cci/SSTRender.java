@@ -53,7 +53,7 @@ import org.slf4j.LoggerFactory;
 import uk.ac.rdg.resc.edal.domain.Extent;
 import uk.ac.rdg.resc.edal.exceptions.BadTimeFormatException;
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
-import uk.ac.rdg.resc.edal.graphics.style.ColourScale;
+import uk.ac.rdg.resc.edal.graphics.style.ScaleRange;
 import uk.ac.rdg.resc.edal.graphics.style.ColourScheme;
 import uk.ac.rdg.resc.edal.graphics.style.MapImage;
 import uk.ac.rdg.resc.edal.graphics.style.RasterLayer;
@@ -357,7 +357,7 @@ public class SSTRender {
         compositeImage.getLayers().add(latitudeDependentSST.getSSTLayer());
         if (includeIce) {
             ColourScheme iceColourScheme = new SegmentColourScheme(
-                    new ColourScale(0f, 1.0f, false), new Color(0, true), null, new Color(0, true),
+                    new ScaleRange(0f, 1.0f, false), new Color(0, true), null, new Color(0, true),
                     "#00ffffff,#ffffff", 100);
             RasterLayer iceLayer = new RasterLayer(iceVar, iceColourScheme);
             compositeImage.getLayers().add(iceLayer);

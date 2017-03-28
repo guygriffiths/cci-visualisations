@@ -39,7 +39,7 @@ import org.joda.time.DateTime;
 
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
 import uk.ac.rdg.resc.edal.geometry.BoundingBoxImpl;
-import uk.ac.rdg.resc.edal.graphics.style.ColourScale;
+import uk.ac.rdg.resc.edal.graphics.style.ScaleRange;
 import uk.ac.rdg.resc.edal.graphics.style.MapImage;
 import uk.ac.rdg.resc.edal.graphics.style.RasterLayer;
 import uk.ac.rdg.resc.edal.graphics.style.SegmentColourScheme;
@@ -75,7 +75,7 @@ public class SSTErrors {
 
         RegularGrid imageGrid = new RegularGridImpl(BoundingBoxImpl.global(), WIDTH, HEIGHT);
 
-        RasterLayer sstLayer = new RasterLayer(SST_VAR, new SegmentColourScheme(new ColourScale(
+        RasterLayer sstLayer = new RasterLayer(SST_VAR, new SegmentColourScheme(new ScaleRange(
                 270f, 305f, false), null, null, new Color(0, true), "default", 250));
         
         /*
