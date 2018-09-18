@@ -31,7 +31,7 @@ This will generate the frames for an animation of SST + sea ice fraction using a
 The main program for this visualisation is defined in the class `uk.ac.rdg.resc.SSTRenderPolar`, and can hence be run from the JAR file using:
 
 ```
-java -Xmx4G -cp cci-sst-visualisation.jar uk.ac.rdg.resc.SSTRenderPolar`
+java -Xmx4G -cp cci-sst-visualisation.jar uk.ac.rdg.resc.SSTRenderPolar
 ```
 
 It behaves almost identically to the equirectangular version, using a file named `sst_render_polar.properties`, a fully-commented example of which can be found [here](src/main/resources/sst_render_polar.properties), or alongside the release download.
