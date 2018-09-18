@@ -37,20 +37,23 @@ import javax.imageio.ImageIO;
 
 import org.joda.time.DateTime;
 
+import uk.ac.rdg.resc.edal.dataset.GriddedDataset;
+import uk.ac.rdg.resc.edal.dataset.cdm.CdmGridDatasetFactory;
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
 import uk.ac.rdg.resc.edal.geometry.BoundingBoxImpl;
-import uk.ac.rdg.resc.edal.graphics.style.ScaleRange;
 import uk.ac.rdg.resc.edal.graphics.style.MapImage;
 import uk.ac.rdg.resc.edal.graphics.style.RasterLayer;
+import uk.ac.rdg.resc.edal.graphics.style.ScaleRange;
 import uk.ac.rdg.resc.edal.graphics.style.SegmentColourScheme;
 import uk.ac.rdg.resc.edal.graphics.style.sld.SLDException;
+import uk.ac.rdg.resc.edal.graphics.utils.PlottingDomainParams;
+import uk.ac.rdg.resc.edal.graphics.utils.SimpleFeatureCatalogue;
 import uk.ac.rdg.resc.edal.grid.RegularGrid;
 import uk.ac.rdg.resc.edal.grid.RegularGridImpl;
 import uk.ac.rdg.resc.edal.grid.TimeAxis;
-import uk.ac.rdg.resc.edal.util.PlottingDomainParams;
 
 /**
- * Program to illustrate various ways of visualising uncertainty 
+ * Program to illustrate various ways of visualising uncertainty
  *
  * @author Guy Griffiths
  */
@@ -60,51 +63,52 @@ public class SSTErrors {
     private static final int WIDTH = 1920;
     private static final int HEIGHT = 960;
 
-    public static void main(String[] args) throws IOException, EdalException, InterruptedException, SLDException, InstantiationException {
+    public static void main(String[] args) throws IOException, EdalException, InterruptedException,
+            SLDException, InstantiationException {
         String outputPath = "/home/guy/speedtest";
 
-        final SimpleFeatureCatalogue catalogue = new SimpleFeatureCatalogue(
-                "cci",
-                "/home/guy/Data/cci-sst/2010/01/01/20100101120000-ESACCI-L4_GHRSST-SSTdepth-OSTIA-GLOB_LT-v02.0-fv01.0.nc",
+        CdmGridDatasetFactory df = new CdmGridDatasetFactory();
+        GriddedDataset ds = (GriddedDataset) df.createDataset("cci",
+                "/home/guy/Data/cci-sst/2010/01/01/20100101120000-ESACCI-L4_GHRSST-SSTdepth-OSTIA-GLOB_LT-v02.0-fv01.0.nc");
+        final SimpleFeatureCatalogue<GriddedDataset> catalogue = new SimpleFeatureCatalogue<>(ds,
                 false);
 
-        TimeAxis timeAxis = (TimeAxis) catalogue.getDataset().getVariableMetadata(SST_VAR)
-                .getTemporalDomain();
+        TimeAxis timeAxis = catalogue.getDataset().getVariableMetadata(SST_VAR).getTemporalDomain();
 
         MapImage compositeImage = new MapImage();
 
         RegularGrid imageGrid = new RegularGridImpl(BoundingBoxImpl.global(), WIDTH, HEIGHT);
 
-        RasterLayer sstLayer = new RasterLayer(SST_VAR, new SegmentColourScheme(new ScaleRange(
-                270f, 305f, false), null, null, new Color(0, true), "default", 250));
-        
+        RasterLayer sstLayer = new RasterLayer(SST_VAR, new SegmentColourScheme(
+                new ScaleRange(270f, 305f, false), null, null, new Color(0, true), "default", 250));
+
         /*
          * Shaded
          */
 //        RasterLayer errorLayer = new RasterLayer(SST_ERROR_VAR, new SegmentColourScheme(new ColourScale(
 //                0f, 2f, false), null, null, new Color(0, true), "#00000000,#ff000000", 250));
-        
+
         /*
          * Stippled
          */
 //        SLDRange range = new SLDRange(0f, 2f, Spacing.LINEAR);
 //        DensityMap function = new SegmentDensityMap(10, range, 0f, 1f, 0f, 1f, 0f);
 //        StippleLayer errorLayer = new StippleLayer(SST_ERROR_VAR, function);
-        
+
         /*
          * Contoured
          */
 //        ContourLayer errorLayer = new ContourLayer(SST_ERROR_VAR, new ColourScale(0f, 2f, false),
 //                true, 30, Color.black, 1, ContourLineStyle.SOLID, true);
-        
+
         compositeImage.getLayers().add(sstLayer);
 //        compositeImage.getLayers().add(errorLayer);
 
         BufferedImage background = ImageIO.read(SSTErrors.class.getResource("/bluemarble_bg.png"));
 
         DateTime time = timeAxis.getCoordinateValue(0);
-        PlottingDomainParams params = new PlottingDomainParams(imageGrid, null, null, null, null,
-                time);
+        PlottingDomainParams params = new PlottingDomainParams(imageGrid.getXSize(),
+                imageGrid.getYSize(), imageGrid.getBoundingBox(), null, null, null, null, time);
 
         /*
          * Bivariate

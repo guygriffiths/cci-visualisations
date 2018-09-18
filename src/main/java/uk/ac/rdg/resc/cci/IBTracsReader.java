@@ -43,6 +43,7 @@ import ucar.ma2.Array;
 import ucar.ma2.Index;
 import ucar.nc2.Variable;
 import ucar.nc2.dataset.NetcdfDataset;
+import uk.ac.rdg.resc.edal.dataset.cdm.NetcdfDatasetAggregator;
 import uk.ac.rdg.resc.edal.domain.Extent;
 import uk.ac.rdg.resc.edal.grid.TimeAxis;
 import uk.ac.rdg.resc.edal.grid.TimeAxisImpl;
@@ -50,7 +51,6 @@ import uk.ac.rdg.resc.edal.position.HorizontalPosition;
 import uk.ac.rdg.resc.edal.util.Extents;
 import uk.ac.rdg.resc.edal.util.GISUtils;
 import uk.ac.rdg.resc.edal.util.TimeUtils;
-import uk.ac.rdg.resc.edal.util.cdm.CdmUtils;
 
 public class IBTracsReader {
     private static final String NAME_VAR = "name";
@@ -69,7 +69,7 @@ public class IBTracsReader {
     private Variable typeVar;
 
     public IBTracsReader(String location, DateTime startTime, DateTime endTime) throws IOException {
-        NetcdfDataset dataset = CdmUtils.openDataset(location);
+        NetcdfDataset dataset = NetcdfDatasetAggregator.getDataset(location);
         nameVar = dataset.findVariable(NAME_VAR);
         latVar = dataset.findVariable(LAT_VAR);
         lonVar = dataset.findVariable(LON_VAR);

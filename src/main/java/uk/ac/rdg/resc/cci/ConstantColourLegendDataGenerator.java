@@ -35,7 +35,7 @@ import java.util.Map;
 import uk.ac.rdg.resc.edal.domain.Extent;
 import uk.ac.rdg.resc.edal.feature.MapFeature;
 import uk.ac.rdg.resc.edal.graphics.style.Drawable.NameAndRange;
-import uk.ac.rdg.resc.edal.graphics.style.util.LegendDataGenerator;
+import uk.ac.rdg.resc.edal.graphics.utils.LegendDataGenerator;
 import uk.ac.rdg.resc.edal.util.Array2D;
 import uk.ac.rdg.resc.edal.util.Extents;
 
@@ -53,6 +53,7 @@ public class ConstantColourLegendDataGenerator extends LegendDataGenerator {
         this.averagedVar = averagedVar;
     }
 
+    @SuppressWarnings("serial")
     protected MapFeature getMapFeature(NameAndRange field, MatrixType type) {
         Map<String, Array2D<Number>> values = new HashMap<String, Array2D<Number>>();
         if (field != null) {

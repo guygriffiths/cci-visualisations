@@ -39,15 +39,14 @@ import java.util.Map;
 import org.geotoolkit.referencing.crs.DefaultGeographicCRS;
 import org.joda.time.DateTime;
 
-import uk.ac.rdg.resc.edal.dataset.Dataset;
+import uk.ac.rdg.resc.edal.dataset.GriddedDataset;
 import uk.ac.rdg.resc.edal.dataset.cdm.CdmGridDatasetFactory;
-import uk.ac.rdg.resc.edal.domain.MapDomainImpl;
+import uk.ac.rdg.resc.edal.domain.MapDomain;
 import uk.ac.rdg.resc.edal.exceptions.DataReadingException;
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
 import uk.ac.rdg.resc.edal.exceptions.VariableNotFoundException;
 import uk.ac.rdg.resc.edal.feature.DiscreteFeature;
 import uk.ac.rdg.resc.edal.feature.MapFeature;
-import uk.ac.rdg.resc.edal.graphics.style.ScaleRange;
 import uk.ac.rdg.resc.edal.graphics.style.ColourScheme2D;
 import uk.ac.rdg.resc.edal.graphics.style.ContourLayer;
 import uk.ac.rdg.resc.edal.graphics.style.ContourLayer.ContourLineStyle;
@@ -55,9 +54,11 @@ import uk.ac.rdg.resc.edal.graphics.style.Drawable.NameAndRange;
 import uk.ac.rdg.resc.edal.graphics.style.MapImage;
 import uk.ac.rdg.resc.edal.graphics.style.MappedSegmentColorScheme2D;
 import uk.ac.rdg.resc.edal.graphics.style.Raster2DLayer;
+import uk.ac.rdg.resc.edal.graphics.style.ScaleRange;
 import uk.ac.rdg.resc.edal.graphics.style.SegmentColourScheme;
-import uk.ac.rdg.resc.edal.graphics.style.util.FeatureCatalogue;
-import uk.ac.rdg.resc.edal.graphics.style.util.LegendDataGenerator;
+import uk.ac.rdg.resc.edal.graphics.utils.FeatureCatalogue;
+import uk.ac.rdg.resc.edal.graphics.utils.LegendDataGenerator;
+import uk.ac.rdg.resc.edal.graphics.utils.PlottingDomainParams;
 import uk.ac.rdg.resc.edal.grid.RegularAxis;
 import uk.ac.rdg.resc.edal.grid.RegularGrid;
 import uk.ac.rdg.resc.edal.grid.TimeAxis;
@@ -67,7 +68,6 @@ import uk.ac.rdg.resc.edal.util.Array2D;
 import uk.ac.rdg.resc.edal.util.CollectionUtils;
 import uk.ac.rdg.resc.edal.util.Extents;
 import uk.ac.rdg.resc.edal.util.GISUtils;
-import uk.ac.rdg.resc.edal.util.PlottingDomainParams;
 
 public class LatitudeDependentSST implements FeatureCatalogue {
     public static final String LATITUDE = "latitude";
@@ -79,7 +79,7 @@ public class LatitudeDependentSST implements FeatureCatalogue {
     /** Cached features */
     private final Map<CacheKey, MapFeature> mapFeatures;
 
-    private final Dataset dataset;
+    private final GriddedDataset dataset;
 
     private float[] means;
     private float scaleRange;
@@ -94,10 +94,9 @@ public class LatitudeDependentSST implements FeatureCatalogue {
         this.sstVar = sstVar;
 
         CdmGridDatasetFactory datasetFactory = new CdmGridDatasetFactory();
-        dataset = datasetFactory.createDataset("cci-sst", location);
+        dataset = (GriddedDataset) datasetFactory.createDataset("cci-sst", location);
 
-        GridVariableMetadata sstMetadata = (GridVariableMetadata) dataset
-                .getVariableMetadata(sstVar);
+        GridVariableMetadata sstMetadata = dataset.getVariableMetadata(sstVar);
 
         timeAxis = sstMetadata.getTemporalDomain();
 
@@ -206,8 +205,8 @@ public class LatitudeDependentSST implements FeatureCatalogue {
         SegmentColourScheme[] schemes = new SegmentColourScheme[latitudeAxis.size()];
         for (int y = 0; y < latitudeAxis.size(); y++) {
             float mean = means[y];
-            SegmentColourScheme colourScheme = new SegmentColourScheme(new ScaleRange(mean
-                    - scaleRange / 2, mean + scaleRange / 2, false), null, null,
+            SegmentColourScheme colourScheme = new SegmentColourScheme(
+                    new ScaleRange(mean - scaleRange / 2, mean + scaleRange / 2, false), null, null,
                     new Color(0, true), palette, 250);
             schemes[y] = colourScheme;
         }
@@ -253,10 +252,9 @@ public class LatitudeDependentSST implements FeatureCatalogue {
             /*
              * Extract the map feature onto the desired image grid
              */
-            PlottingDomainParams params = new PlottingDomainParams(imageGrid, null, null, null,
-                    null, time);
+            MapDomain mapDomain = new MapDomain(imageGrid, null, time);
             List<? extends DiscreteFeature<?, ?>> extractedMapFeatures = dataset
-                    .extractMapFeatures(CollectionUtils.setOf(varId), params);
+                    .extractMapFeatures(CollectionUtils.setOf(varId), mapDomain);
             /*
              * Exactly one feature is extracted.
              */
@@ -274,6 +272,7 @@ public class LatitudeDependentSST implements FeatureCatalogue {
         }
     }
 
+    @SuppressWarnings("serial")
     @Override
     public FeaturesAndMemberName getFeaturesForLayer(String id, PlottingDomainParams params) {
         /*
@@ -300,8 +299,8 @@ public class LatitudeDependentSST implements FeatureCatalogue {
                                 Double xval = imageGrid.getXAxis()
                                         .getCoordinateValue(coords[X_IND]);
                                 HorizontalPosition llPos = GISUtils.transformPosition(
-                                        new HorizontalPosition(xval, yval, imageGrid
-                                                .getCoordinateReferenceSystem()),
+                                        new HorizontalPosition(xval, yval,
+                                                imageGrid.getCoordinateReferenceSystem()),
                                         DefaultGeographicCRS.WGS84);
 
                                 RegularAxis latitudeAxis = averagingGrid.getYAxis();
@@ -314,15 +313,17 @@ public class LatitudeDependentSST implements FeatureCatalogue {
                                 throw new UnsupportedOperationException();
                             }
                         });
-                latitudeFeature = new FeaturesAndMemberName(new MapFeature(LATITUDE,
-                        "Temperature_height_above_ground", "", new MapDomainImpl(imageGrid, null,
-                                null, params.getTargetT()), null, latitudeValuesMap), LATITUDE);
+                latitudeFeature = new FeaturesAndMemberName(
+                        new MapFeature(LATITUDE, "Temperature_height_above_ground", "",
+                                new MapDomain(imageGrid, null, params.getTargetT()), null,
+                                latitudeValuesMap),
+                        LATITUDE);
             }
             return latitudeFeature;
         } else {
             try {
-                return new FeaturesAndMemberName(getMapFeature(params.getTargetT(), id, false,
-                        params.getImageGrid()), id);
+                return new FeaturesAndMemberName(
+                        getMapFeature(params.getTargetT(), id, false, params.getImageGrid()), id);
             } catch (DataReadingException | VariableNotFoundException e) {
                 return null;
             }
@@ -355,12 +356,12 @@ public class LatitudeDependentSST implements FeatureCatalogue {
         MapImage contoursRaster = new MapImage();
         contoursRaster.getLayers().add(sstLayer);
         ContourLayer contours = new ContourLayer(sstVar, new ScaleRange(250f, 320f, false), false,
-                14, Color.darkGray, 1, ContourLineStyle.SOLID, true);
+                14, Color.darkGray, "#000000", 1, ContourLineStyle.HEAVY, true);
         contoursRaster.getLayers().add(contours);
 
-        BufferedImage colorbar2d = contoursRaster.drawImage(
-                dataGenerator.getPlottingDomainParams(), dataGenerator.getFeatureCatalogue(
-                        sstNameAndRange, new NameAndRange(LATITUDE, Extents.newExtent(-90f, 90f))));
+        BufferedImage colorbar2d = contoursRaster.drawImage(dataGenerator.getPlottingDomainParams(),
+                dataGenerator.getFeatureCatalogue(sstNameAndRange,
+                        new NameAndRange(LATITUDE, Extents.newExtent(-90f, 90f))));
 //        BufferedImage legendLabels = MapImage.getLegendLabels(sstNameAndRange, extra, width,
 //                Color.white, true, HEIGHT / 60);
 //        AffineTransform at = new AffineTransform();

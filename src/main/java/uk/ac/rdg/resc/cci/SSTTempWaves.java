@@ -42,6 +42,8 @@ import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.DateTimeFormatterBuilder;
 
+import uk.ac.rdg.resc.edal.dataset.GriddedDataset;
+import uk.ac.rdg.resc.edal.dataset.cdm.CdmGridDatasetFactory;
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
 import uk.ac.rdg.resc.edal.feature.MapFeature;
 import uk.ac.rdg.resc.edal.geometry.BoundingBoxImpl;
@@ -49,12 +51,13 @@ import uk.ac.rdg.resc.edal.graphics.style.MapImage;
 import uk.ac.rdg.resc.edal.graphics.style.RasterLayer;
 import uk.ac.rdg.resc.edal.graphics.style.ScaleRange;
 import uk.ac.rdg.resc.edal.graphics.style.SegmentColourScheme;
-import uk.ac.rdg.resc.edal.graphics.style.util.FeatureCatalogue.FeaturesAndMemberName;
+import uk.ac.rdg.resc.edal.graphics.utils.FeatureCatalogue.FeaturesAndMemberName;
+import uk.ac.rdg.resc.edal.graphics.utils.PlottingDomainParams;
+import uk.ac.rdg.resc.edal.graphics.utils.SimpleFeatureCatalogue;
 import uk.ac.rdg.resc.edal.grid.RegularGrid;
 import uk.ac.rdg.resc.edal.grid.RegularGridImpl;
 import uk.ac.rdg.resc.edal.grid.TimeAxis;
 import uk.ac.rdg.resc.edal.util.Array2D;
-import uk.ac.rdg.resc.edal.util.PlottingDomainParams;
 
 /**
  * Program to generate images which visualise wind, hurricane labels, and SST
@@ -68,16 +71,19 @@ public class SSTTempWaves {
     private static final int HEIGHT = 960;
 
     public static void main(String[] args) throws IOException, EdalException {
-        BufferedImage background = ImageIO.read(SSTTempWaves.class
-                .getResource("/bluemarble_bg.png"));
+        BufferedImage background = ImageIO
+                .read(SSTTempWaves.class.getResource("/bluemarble_bg.png"));
 
         String outputPath = "/home/guy/sst-flotsam";
         System.out.println("About to read DS");
-        final SimpleFeatureCatalogue cciSst = new SimpleFeatureCatalogue("cci",
-                "/home/guy/Data/cci-sst/**/**/**/*.nc", false);
+        CdmGridDatasetFactory df = new CdmGridDatasetFactory();
+        GriddedDataset ds = (GriddedDataset) df.createDataset("cci",
+                "/home/guy/Data/cci-sst/**/**/**/*.nc");
+        final SimpleFeatureCatalogue<GriddedDataset> cciSst = new SimpleFeatureCatalogue<>(ds,
+                false);
+
         System.out.println("About to read time axis");
-        TimeAxis timeAxis = (TimeAxis) cciSst.getDataset().getVariableMetadata(SST_VAR)
-                .getTemporalDomain();
+        TimeAxis timeAxis = cciSst.getDataset().getVariableMetadata(SST_VAR).getTemporalDomain();
 
         MapImage compositeImage = new MapImage();
 //        RegularGrid imageGrid = new RegularGridImpl(new BoundingBoxImpl(-110, -7.5, -5, 45,
@@ -88,7 +94,8 @@ public class SSTTempWaves {
         int bgHeight = background.getHeight();
         double imageCoordWidth = imageGrid.getBoundingBox().getWidth();
         double imageCoordHeight = imageGrid.getBoundingBox().getHeight();
-        int bgSubImageOffsetX = (int) ((180.0 + imageGrid.getBoundingBox().getMinX()) * (bgWidth / 360.0));
+        int bgSubImageOffsetX = (int) ((180.0 + imageGrid.getBoundingBox().getMinX())
+                * (bgWidth / 360.0));
         int bgSubImageOffsetY = bgHeight
                 - (int) ((90.0 + imageGrid.getBoundingBox().getMaxY()) * (bgHeight / 180.0));
         int bgSubImageWidth = (int) (bgWidth * imageCoordWidth / 360.0);
@@ -125,8 +132,8 @@ public class SSTTempWaves {
             DateTime time = timeAxis.getCoordinateValue(i);
             System.out.println("Generating frame for " + time);
 
-            PlottingDomainParams params = new PlottingDomainParams(imageGrid, null, null, null,
-                    null, time);
+            PlottingDomainParams params = new PlottingDomainParams(imageGrid.getXSize(),
+                    imageGrid.getYSize(), imageGrid.getBoundingBox(), null, null, null, null, time);
 
             FeaturesAndMemberName sstFeatures = cciSst.getFeaturesForLayer(SST_VAR, params);
             MapFeature sstMapFeature = (MapFeature) sstFeatures.getFeatures().iterator().next();

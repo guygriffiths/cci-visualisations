@@ -4,7 +4,7 @@
     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>uk.ac.rdg.resc</groupId>
-    <version>1.0-SNAPSHOT</version>
+    <version>1.0</version>
     <artifactId>cci-visualisations</artifactId>
     <name>CCI Visualisations</name>
     <packaging>jar</packaging>
@@ -12,21 +12,21 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <netbeans.hint.license>bsd-3clause</netbeans.hint.license>
-        <edal-version>1.0-SNAPSHOT</edal-version>
+        <edal-version>1.4.1</edal-version>
     </properties>
 
     <inceptionYear>2014</inceptionYear>
     <description>Visualisations for the CCI project</description>
     <organization>
-        <name>Reading e-Science Centre, University of Reading, UK</name>
-        <url>http://www.resc.reading.ac.uk</url>
+        <name>Institute for Environmental Analytics, University of Reading, UK</name>
+        <url>http://www.the-iea.org</url>
     </organization>
     <developers>
         <developer>
             <name>Guy Griffiths</name>
-            <organization>Reading e-Science Centre, University of Reading, UK</organization>
-            <organizationUrl>http://www.resc.reading.ac.uk</organizationUrl>
-            <email>guy.griffiths@reading.ac.uk</email>
+            <organization>Institute for Environmental Analytics, University of Reading, UK</organization>
+            <organizationUrl>http://www.the-iea.org</organizationUrl>
+            <email>guy.griffiths@the-iea.org</email>
         </developer>
     </developers>
     <build>
@@ -40,7 +40,7 @@
                         <manifest>
                             <addClasspath>true</addClasspath>
                             <classpathPrefix>lib/</classpathPrefix>
-                            <mainClass>uk.ac.rdg.resc.cci.LatitudeDependentSST</mainClass>
+                            <mainClass>uk.ac.rdg.resc.cci.SSTRender</mainClass>
                         </manifest>
                     </archive>
                     <finalName>cci-visualisations</finalName>
@@ -68,7 +68,7 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>1.1</version>
                 <configuration>
-                    <mainClass>uk.ac.rdg.resc.cci.LatitudeDependentSST</mainClass>
+                    <mainClass>uk.ac.rdg.resc.cci.SSTRender</mainClass>
                 </configuration>
             </plugin>
             <plugin>
@@ -83,7 +83,7 @@
                     <archive>
                         <manifest>
                             <addClasspath>true</addClasspath>
-                            <mainClass>uk.ac.rdg.resc.cci.SSTRenderPolar</mainClass>
+                            <mainClass>uk.ac.rdg.resc.cci.SSTRender</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
@@ -100,12 +100,6 @@
     </build>
     <dependencies>
         <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.5</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>uk.ac.rdg.resc</groupId>
             <artifactId>edal-graphics</artifactId>
             <version>${edal-version}</version>
@@ -116,10 +110,4 @@
             <version>${edal-version}</version>
         </dependency>
     </dependencies>
-    <repositories>
-        <repository>
-            <id>edal-snapshots</id>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-        </repository>
-    </repositories>
 </project>

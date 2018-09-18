@@ -35,7 +35,6 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -53,15 +52,15 @@ import org.slf4j.LoggerFactory;
 import uk.ac.rdg.resc.edal.domain.Extent;
 import uk.ac.rdg.resc.edal.exceptions.BadTimeFormatException;
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
-import uk.ac.rdg.resc.edal.graphics.style.ScaleRange;
 import uk.ac.rdg.resc.edal.graphics.style.ColourScheme;
 import uk.ac.rdg.resc.edal.graphics.style.MapImage;
 import uk.ac.rdg.resc.edal.graphics.style.RasterLayer;
+import uk.ac.rdg.resc.edal.graphics.style.ScaleRange;
 import uk.ac.rdg.resc.edal.graphics.style.SegmentColourScheme;
+import uk.ac.rdg.resc.edal.graphics.utils.PlottingDomainParams;
 import uk.ac.rdg.resc.edal.grid.RegularGrid;
 import uk.ac.rdg.resc.edal.grid.RegularGridImpl;
 import uk.ac.rdg.resc.edal.util.GISUtils;
-import uk.ac.rdg.resc.edal.util.PlottingDomainParams;
 import uk.ac.rdg.resc.edal.util.TimeUtils;
 
 /**
@@ -336,8 +335,10 @@ public class SSTRender {
          */
         Extent<Double> xExtent = imageGrid.getXAxis().getCoordinateExtent();
         Extent<Double> yExtent = imageGrid.getYAxis().getCoordinateExtent();
-        int regionWidthPx = (int) (bluemarble.getWidth() * (xExtent.getHigh() - xExtent.getLow()) / 360.0);
-        int regionHeightPx = (int) (bluemarble.getHeight() * (yExtent.getHigh() - yExtent.getLow()) / 180.0);
+        int regionWidthPx = (int) (bluemarble.getWidth() * (xExtent.getHigh() - xExtent.getLow())
+                / 360.0);
+        int regionHeightPx = (int) (bluemarble.getHeight() * (yExtent.getHigh() - yExtent.getLow())
+                / 180.0);
         int regionXOffset = (int) ((xExtent.getLow() + 180.0) * bluemarble.getWidth() / 360.0);
         int regionYOffset = (int) ((90.0 - yExtent.getHigh()) * bluemarble.getHeight() / 180.0);
         background = background.getSubimage(regionXOffset, regionYOffset, regionWidthPx,
@@ -356,9 +357,8 @@ public class SSTRender {
         MapImage compositeImage = new MapImage();
         compositeImage.getLayers().add(latitudeDependentSST.getSSTLayer());
         if (includeIce) {
-            ColourScheme iceColourScheme = new SegmentColourScheme(
-                    new ScaleRange(0f, 1.0f, false), new Color(0, true), null, new Color(0, true),
-                    "#00ffffff,#ffffff", 100);
+            ColourScheme iceColourScheme = new SegmentColourScheme(new ScaleRange(0f, 1.0f, false),
+                    new Color(0, true), null, new Color(0, true), "#00ffffff,#ffffff", 100);
             RasterLayer iceLayer = new RasterLayer(iceVar, iceColourScheme);
             compositeImage.getLayers().add(iceLayer);
         }
@@ -394,12 +394,6 @@ public class SSTRender {
         final int gap = width / 100;
         final int targetFontHeight = height / 15;
         final int totalWidth = includeLegend ? width + legend.getWidth() + gap : width;
-        /*
-         * The frame number. Frames are numbered according to the position in
-         * the dataset.
-         */
-        int frameNo = firstFrame;
-        DecimalFormat frameNoFormat = new DecimalFormat("00000");
 
         /*
          * Loop over all frames to generate images
@@ -411,13 +405,14 @@ public class SSTRender {
              * Create an image to render the frame with space for the legend and
              * a gap
              */
-            BufferedImage frame = new BufferedImage(totalWidth, height, BufferedImage.TYPE_INT_ARGB);
+            BufferedImage frame = new BufferedImage(totalWidth, height,
+                    BufferedImage.TYPE_INT_ARGB);
 
             /*
              * Create parameters to plot with
              */
-            PlottingDomainParams params = new PlottingDomainParams(imageGrid, null, null, null,
-                    null, time);
+            PlottingDomainParams params = new PlottingDomainParams(imageGrid.getXSize(),
+                    imageGrid.getYSize(), imageGrid.getBoundingBox(), null, null, null, null, time);
             /*
              * Render the image with SST and ice layers
              */
@@ -475,14 +470,13 @@ public class SSTRender {
              * Write the image to disk
              */
             ImageIO.write(frame, "png",
-                    new File(outputPath + "/frame-" + frameNoFormat.format(frameNo++) + ".png"));
+                    new File(outputPath + "/frame-" + TimeUtils.dateTimeToISO8601(time) + ".png"));
         }
         /*
          * Add a helpful message of how to convert frames to an MP4 video.
          */
-        log.info("Finished writing frames.  Now run:\nffmpeg -r 25 -start_number " + firstFrame
-                + " -i '" + outputPath
-                + "/frame-%05d.png' -c:v libx264 -pix_fmt yuv420p output.mp4");
+        log.info("Finished writing frames.  Now run:\nffmpeg -r 25 -pattern_type glob  -i '" + outputPath
+                + "/frame-*.png' -c:v libx264 -pix_fmt yuv420p output.mp4");
     }
 
 }

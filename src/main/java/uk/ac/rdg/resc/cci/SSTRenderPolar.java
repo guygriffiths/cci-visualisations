@@ -35,7 +35,6 @@ import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
-import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -46,19 +45,21 @@ import org.joda.time.DateTime;
 import org.joda.time.chrono.ISOChronology;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.DateTimeFormatterBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import uk.ac.rdg.resc.edal.exceptions.BadTimeFormatException;
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
 import uk.ac.rdg.resc.edal.geometry.BoundingBoxImpl;
-import uk.ac.rdg.resc.edal.graphics.style.ScaleRange;
 import uk.ac.rdg.resc.edal.graphics.style.ColourScheme;
 import uk.ac.rdg.resc.edal.graphics.style.MapImage;
 import uk.ac.rdg.resc.edal.graphics.style.RasterLayer;
+import uk.ac.rdg.resc.edal.graphics.style.ScaleRange;
 import uk.ac.rdg.resc.edal.graphics.style.SegmentColourScheme;
+import uk.ac.rdg.resc.edal.graphics.utils.PlottingDomainParams;
 import uk.ac.rdg.resc.edal.grid.RegularGrid;
 import uk.ac.rdg.resc.edal.grid.RegularGridImpl;
 import uk.ac.rdg.resc.edal.util.GISUtils;
-import uk.ac.rdg.resc.edal.util.PlottingDomainParams;
 import uk.ac.rdg.resc.edal.util.TimeUtils;
 
 /**
@@ -67,6 +68,8 @@ import uk.ac.rdg.resc.edal.util.TimeUtils;
  * animation
  */
 public class SSTRenderPolar {
+    private static final Logger log = LoggerFactory.getLogger(SSTRenderPolar.class);
+    
     public static void main(String[] args) throws IOException, EdalException {
         /*
          * Load a properties file to determine what to plot.
@@ -77,8 +80,7 @@ public class SSTRenderPolar {
         String dataPath = properties.getProperty("dataPath");
 
         if (outputPath == null || dataPath == null) {
-            System.out
-                    .println("You must provide at least the output path and the path to the SST data");
+            log.error("You must provide at least the output path and the path to the SST data");
             System.exit(1);
         }
 
@@ -130,7 +132,7 @@ public class SSTRenderPolar {
                 GISUtils.getCrs("EPSG:3408"), size, size);
         RegularGridImpl spGrid = new RegularGridImpl(-9000000, -9000000, 9000000, 9000000,
                 GISUtils.getCrs("EPSG:3409"), size, size);
-        
+
         /*
          * Using the time axis of the dataset, select the indices we want to
          * generate images to/from
@@ -254,7 +256,7 @@ public class SSTRenderPolar {
          */
         MapImage compositeImage = new MapImage();
         compositeImage.getLayers().add(latitudeDependentSST.getSSTLayer());
-        if(iceVar != null) {
+        if (iceVar != null) {
             ColourScheme iceColourScheme = new SegmentColourScheme(new ScaleRange(0f, 1.0f, false),
                     new Color(0, true), null, new Color(0, true), "#00ffffff,#ffffff", 100);
             RasterLayer iceLayer = new RasterLayer(iceVar, iceColourScheme);
@@ -274,17 +276,11 @@ public class SSTRenderPolar {
         final int targetFontHeight = size / 15;
 
         /*
-         * The frame number. Frames are numbered according to the position in
-         * the dataset.
-         */
-        int frameNo = firstFrame;
-        DecimalFormat frameNoFormat = new DecimalFormat("00000");
-        /*
          * Loop over all frames to generate images
          */
         for (DateTime time : latitudeDependentSST.getTimeAxis().getCoordinateValues()
                 .subList(firstFrame, lastFrame + 1)) {
-            System.out.println("Generating frame for time " + time);
+            log.info("Generating frame for time " + time);
             /*
              * Create an image to render the frame with space for the legend and
              * a gap
@@ -294,10 +290,10 @@ public class SSTRenderPolar {
             /*
              * Create parameters to plot with
              */
-            PlottingDomainParams npParams = new PlottingDomainParams(npGrid, null, null, null,
-                    null, time);
-            PlottingDomainParams spParams = new PlottingDomainParams(spGrid, null, null, null,
-                    null, time);
+            PlottingDomainParams npParams = new PlottingDomainParams(npGrid.getXSize(),
+                    npGrid.getYSize(), npGrid.getBoundingBox(), null, null, null, null, time);
+            PlottingDomainParams spParams = new PlottingDomainParams(spGrid.getXSize(),
+                    spGrid.getYSize(), spGrid.getBoundingBox(), null, null, null, null, time);
             /*
              * Render the image with SST and ice layers
              */
@@ -352,13 +348,13 @@ public class SSTRenderPolar {
              * Write the image to disk
              */
             ImageIO.write(frame, "png",
-                    new File(outputPath + "/frame-" + frameNoFormat.format(frameNo++) + ".png"));
+                    new File(outputPath + "/frame-" + TimeUtils.dateTimeToISO8601(time) + ".png"));
         }
         /*
          * Add a helpful message of how to convert frames to an MP4 video.
          */
-        System.out.println("Finished writing frames.  Now run:\nffmpeg -r 25 -i '" + outputPath
-                + "/frame-%04d.png' -c:v libx264 -pix_fmt yuv420p output.mp4");
+        log.info("Finished writing frames.  Now run:\nffmpeg -r 25 -pattern_type glob  -i '" + outputPath
+                + "/frame-*.png' -c:v libx264 -pix_fmt yuv420p output.mp4");
     }
 
 }

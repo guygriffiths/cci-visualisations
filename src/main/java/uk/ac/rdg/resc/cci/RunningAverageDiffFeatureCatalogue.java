@@ -36,11 +36,11 @@ import java.util.Map;
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
 import uk.ac.rdg.resc.edal.feature.DiscreteFeature;
 import uk.ac.rdg.resc.edal.feature.MapFeature;
-import uk.ac.rdg.resc.edal.graphics.style.util.FeatureCatalogue;
+import uk.ac.rdg.resc.edal.graphics.utils.FeatureCatalogue;
+import uk.ac.rdg.resc.edal.graphics.utils.PlottingDomainParams;
 import uk.ac.rdg.resc.edal.grid.TimeAxis;
 import uk.ac.rdg.resc.edal.util.Array2D;
 import uk.ac.rdg.resc.edal.util.GISUtils;
-import uk.ac.rdg.resc.edal.util.PlottingDomainParams;
 import uk.ac.rdg.resc.edal.util.ValuesArray2D;
 
 /**

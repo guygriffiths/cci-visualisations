@@ -33,19 +33,12 @@ import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
 
 import org.opengis.referencing.crs.CoordinateReferenceSystem;
 
-import uk.ac.rdg.resc.cci.EvolvingWindPlotter.EvolvingWindLine;
-import uk.ac.rdg.resc.edal.grid.GridCell2D;
 import uk.ac.rdg.resc.edal.grid.RegularAxis;
 import uk.ac.rdg.resc.edal.grid.RegularGrid;
-import uk.ac.rdg.resc.edal.grid.RegularGridImpl;
 import uk.ac.rdg.resc.edal.position.HorizontalPosition;
 import uk.ac.rdg.resc.edal.util.Array2D;
 import uk.ac.rdg.resc.edal.util.GISUtils;

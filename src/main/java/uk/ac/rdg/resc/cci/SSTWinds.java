@@ -45,26 +45,30 @@ import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.DateTimeFormatterBuilder;
 
 import uk.ac.rdg.resc.cci.IBTracsReader.PosAndName;
+import uk.ac.rdg.resc.edal.dataset.GriddedDataset;
+import uk.ac.rdg.resc.edal.dataset.cdm.CdmGridDatasetFactory;
 import uk.ac.rdg.resc.edal.exceptions.EdalException;
 import uk.ac.rdg.resc.edal.exceptions.VariableNotFoundException;
 import uk.ac.rdg.resc.edal.feature.MapFeature;
 import uk.ac.rdg.resc.edal.geometry.BoundingBoxImpl;
-import uk.ac.rdg.resc.edal.graphics.style.ScaleRange;
 import uk.ac.rdg.resc.edal.graphics.style.MapImage;
 import uk.ac.rdg.resc.edal.graphics.style.RasterLayer;
+import uk.ac.rdg.resc.edal.graphics.style.ScaleRange;
 import uk.ac.rdg.resc.edal.graphics.style.SegmentColourScheme;
-import uk.ac.rdg.resc.edal.graphics.style.util.FeatureCatalogue;
-import uk.ac.rdg.resc.edal.graphics.style.util.FeatureCatalogue.FeaturesAndMemberName;
+import uk.ac.rdg.resc.edal.graphics.utils.FeatureCatalogue;
+import uk.ac.rdg.resc.edal.graphics.utils.FeatureCatalogue.FeaturesAndMemberName;
+import uk.ac.rdg.resc.edal.graphics.utils.PlottingDomainParams;
+import uk.ac.rdg.resc.edal.graphics.utils.SimpleFeatureCatalogue;
 import uk.ac.rdg.resc.edal.grid.RegularGrid;
 import uk.ac.rdg.resc.edal.grid.RegularGridImpl;
 import uk.ac.rdg.resc.edal.grid.TimeAxis;
 import uk.ac.rdg.resc.edal.util.Array2D;
 import uk.ac.rdg.resc.edal.util.GISUtils;
 import uk.ac.rdg.resc.edal.util.GridCoordinates2D;
-import uk.ac.rdg.resc.edal.util.PlottingDomainParams;
 
 /**
- * Program to generate images which visualise wind, hurricane labels, and SST anomalies
+ * Program to generate images which visualise wind, hurricane labels, and SST
+ * anomalies
  *
  * @author Guy Griffiths
  */
@@ -80,28 +84,37 @@ public class SSTWinds {
         BufferedImage background = ImageIO.read(SSTWinds.class.getResource("/bluemarble_bg.png"));
 
         String outputPath = "/home/guy/sst-wind";
-        final SimpleFeatureCatalogue cciSst = new SimpleFeatureCatalogue("cci",
-                "/home/guy/Data/cci-sst/**/**/**/*.nc", false);
-        final SimpleFeatureCatalogue xWind = new SimpleFeatureCatalogue("wind",
-                "/home/guy/Data/era_interim/U10.erai.19812013.nc", false);
-        final SimpleFeatureCatalogue yWind = new SimpleFeatureCatalogue("wind",
-                "/home/guy/Data/era_interim/V10.erai.19812013.nc", false);
-        TimeAxis timeAxis = (TimeAxis) xWind.getDataset().getVariableMetadata(WIND_X_VAR)
-                .getTemporalDomain();
+
+        CdmGridDatasetFactory df = new CdmGridDatasetFactory();
+        GriddedDataset sstDs = (GriddedDataset) df.createDataset("cci",
+                "/home/guy/Data/cci-sst/**/**/**/*.nc");
+        GriddedDataset windxDs = (GriddedDataset) df.createDataset("wind",
+                "/home/guy/Data/era_interim/U10.erai.19812013.nc");
+        GriddedDataset windyDs = (GriddedDataset) df.createDataset("wind",
+                "/home/guy/Data/era_interim/V10.erai.19812013.nc");
+
+        final SimpleFeatureCatalogue<GriddedDataset> cciSst = new SimpleFeatureCatalogue<>(sstDs,
+                false);
+        final SimpleFeatureCatalogue<GriddedDataset> xWind = new SimpleFeatureCatalogue<>(windxDs,
+                false);
+        final SimpleFeatureCatalogue<GriddedDataset> yWind = new SimpleFeatureCatalogue<>(windyDs,
+                false);
+        TimeAxis timeAxis = xWind.getDataset().getVariableMetadata(WIND_X_VAR).getTemporalDomain();
 
         IBTracsReader ibtracs = new IBTracsReader(
-                "/home/guy/Data/storm_tracks/Allstorms.ibtracs_all.v03r06.nc", new DateTime(1992,
-                        1, 1, 0, 0), new DateTime(2010, 12, 31, 23, 59));
+                "/home/guy/Data/storm_tracks/Allstorms.ibtracs_all.v03r06.nc",
+                new DateTime(1992, 1, 1, 0, 0), new DateTime(2010, 12, 31, 23, 59));
 
         MapImage compositeImage = new MapImage();
-        RegularGrid imageGrid = new RegularGridImpl(new BoundingBoxImpl(-110, -7.5, -5, 45,
-                DefaultGeographicCRS.WGS84), WIDTH, HEIGHT);
+        RegularGrid imageGrid = new RegularGridImpl(
+                new BoundingBoxImpl(-110, -7.5, -5, 45, DefaultGeographicCRS.WGS84), WIDTH, HEIGHT);
 
         int bgWidth = background.getWidth();
         int bgHeight = background.getHeight();
         double imageCoordWidth = imageGrid.getBoundingBox().getWidth();
         double imageCoordHeight = imageGrid.getBoundingBox().getHeight();
-        int bgSubImageOffsetX = (int) ((180.0 + imageGrid.getBoundingBox().getMinX()) * (bgWidth / 360.0));
+        int bgSubImageOffsetX = (int) ((180.0 + imageGrid.getBoundingBox().getMinX())
+                * (bgWidth / 360.0));
         int bgSubImageOffsetY = bgHeight
                 - (int) ((90.0 + imageGrid.getBoundingBox().getMaxY()) * (bgHeight / 180.0));
         int bgSubImageWidth = (int) (bgWidth * imageCoordWidth / 360.0);
@@ -154,8 +167,8 @@ public class SSTWinds {
                     timeAxis);
             int frameNo = 0;
             RunningAverageDiffFeatureCatalogue diffFc = new RunningAverageDiffFeatureCatalogue(
-                    SST_VAR, 10, featureCatalogue, (TimeAxis) cciSst.getDataset()
-                            .getVariableMetadata(SST_VAR).getTemporalDomain());
+                    SST_VAR, 10, featureCatalogue,
+                    cciSst.getDataset().getVariableMetadata(SST_VAR).getTemporalDomain());
             EvolvingWindPlotter windPlotter = new EvolvingWindPlotter(imageGrid, 0.05, 24,
                     new Color(0f, 0f, 0f, 0.3f), 20);
 
@@ -163,8 +176,9 @@ public class SSTWinds {
                 DateTime time = timeAxis.getCoordinateValue(i);
                 System.out.println("Generating frame for " + time);
 
-                PlottingDomainParams params = new PlottingDomainParams(imageGrid, null, null, null,
-                        null, time);
+                PlottingDomainParams params = new PlottingDomainParams(imageGrid.getXSize(),
+                        imageGrid.getYSize(), imageGrid.getBoundingBox(), null, null, null, null,
+                        time);
 
                 FeaturesAndMemberName xF = xWind.getFeaturesForLayer(WIND_X_VAR, params);
                 FeaturesAndMemberName yF = yWind.getFeaturesForLayer(WIND_Y_VAR, params);
@@ -230,18 +244,17 @@ public class SSTWinds {
                         g.drawString(posName.getName(), xPos + 9, yPos - 1);
                         g.drawString(posName.getName(), xPos + 11, yPos + 1);
                         g.drawString(posName.getName(), xPos + 11, yPos - 1);
-                        g.fillOval(xPos-6, yPos-6, 12, 12);
+                        g.fillOval(xPos - 6, yPos - 6, 12, 12);
                         g.setColor(Color.black);
                         g.drawString(posName.getName(), xPos + 10, yPos);
-                        g.fillOval(xPos-5, yPos-5, 10, 10);
+                        g.fillOval(xPos - 5, yPos - 5, 10, 10);
                     }
                 }
-                ImageIO.write(frame, "png",
-                        new File(yearOutPath + "/frame-" + frameNoFormat.format(frameNo++) + ".png"));
+                ImageIO.write(frame, "png", new File(
+                        yearOutPath + "/frame-" + frameNoFormat.format(frameNo++) + ".png"));
             }
 
-            System.out.println("Finished writing frames.  Now run:\nffmpeg -r 25 -i '"
-                    + yearOutPath
+            System.out.println("Finished writing frames.  Now run:\nffmpeg -r 25 -i '" + yearOutPath
                     + "/frame-%04d.png' -crf 18 -c:v libx264 -pix_fmt yuv420p output.mp4");
         }
     }
