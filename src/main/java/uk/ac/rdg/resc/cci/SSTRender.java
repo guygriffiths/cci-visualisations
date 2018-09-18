@@ -82,6 +82,11 @@ public class SSTRender {
         } else {
             properties.load(SSTRender.class.getResourceAsStream("/sst_render.properties"));
         }
+        /*
+         * Merge any properties specified on the command line
+         */
+        properties.putAll(System.getProperties());
+        
         String outputPath = properties.getProperty("outputPath");
         String dataPath = properties.getProperty("dataPath");
 
@@ -113,7 +118,7 @@ public class SSTRender {
         String yearsStr = properties.getProperty("yearsInAverage", "");
         String monthsStr = properties.getProperty("monthsInAverage", "");
         String daysStr = properties.getProperty("daysInAverage", "");
-
+        
         /*
          * Determine the size of the image to plot
          */
